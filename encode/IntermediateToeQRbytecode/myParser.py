@@ -20,10 +20,10 @@ class Parser:
 
 
     # Compress program strings, write the DICT_LOCAL header, then parse
-    def encode(self, source_text, min_len = 2, max_len = 32, max_dict = 1023, exh_max_depth = 1):
+    def encode(self, source_text, min_len = 2, max_len = 32, max_dict = 1023):
         strings = self._extract_program_strings(source_text)
 
-        result = compress_program_strings(strings, min_len = min_len, max_len = max_len, max_dict = max_dict, exh_max_depth = exh_max_depth)
+        result = compress_program_strings(strings, min_len = min_len, max_len = max_len, max_dict = max_dict)
         self.compressed = result
         self.compressed_idx = 0
 

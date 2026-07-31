@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-# String compression for QR dialects. Dictionary search runs in C
-# (ctypes binding to c2_exhaustive.c, huffman-len, DFS depth 1); bit-
-# level serialization stays in Python, the single source of truth for
-# the QRtree bitstream layout.
+# String compression
 
 import ctypes
 import os
@@ -14,19 +11,17 @@ import math
 RAW = 0
 TOK = 1
 
-ENC_HUFF_LEN = 2  # matches ENC_HUFF_LEN in c2_exhaustive.c
+ENC_HUFF_LEN = 2
+EXH_MAX_DEPTH = 1
 
 MIN_LEN_DEFAULT = 2
 MAX_LEN_DEFAULT = 32
 MAX_DICT_DEFAULT = 1023
-EXH_MAX_DEPTH = 1
 
 
-# ---------------------------
-# C library loading
-# ---------------------------
 def _find_library_path():
     """Locate the compiled c2_exhaustive library next to this file."""
+    
     here = os.path.dirname(os.path.abspath(__file__))
     system = platform.system()
 
@@ -42,6 +37,7 @@ def _find_library_path():
 
     for name in candidates:
         path = os.path.join(here, name)
+        
         if os.path.exists(path):
             return path
 
@@ -87,10 +83,10 @@ _lib.qrtree_build.argtypes = [
 _lib.qrtree_free_result.argtypes = [ctypes.POINTER(_QRTreeBuildResult)]
 
 
-def _c_build_dictionary(strings, min_len, max_len, max_dict, exh_max_depth, nthreads):
+def _c_build_dictionary(strings, min_len, max_len, max_dict, nthreads):
     """Call into C for alphabet construction + dictionary search (the
-    expensive part), always huffman-len encoding, DFS depth 1. Returns
-    (alphabet, byte_to_id, dictionary, seqs)."""
+    expensive part), always huffman-len encoding, DFS depth EXH_MAX_DEPTH.
+    Returns (alphabet, byte_to_id, dictionary, seqs)."""
     
     byte_strings = [s.encode('utf-8') for s in strings]
     n = len(byte_strings)
@@ -98,7 +94,7 @@ def _c_build_dictionary(strings, min_len, max_len, max_dict, exh_max_depth, nthr
     arr_ptrs = (ctypes.c_char_p * n)(*byte_strings)
     arr_lens = (ctypes.c_int32 * n)(*[len(b) for b in byte_strings])
 
-    res_ptr = _lib.qrtree_build(arr_ptrs, arr_lens, n, ENC_HUFF_LEN, min_len, max_len, max_dict, exh_max_depth, nthreads)
+    res_ptr = _lib.qrtree_build(arr_ptrs, arr_lens, n, ENC_HUFF_LEN, min_len, max_len, max_dict, EXH_MAX_DEPTH, nthreads)
     res = res_ptr.contents
 
     alphabet = bytes(res.alphabet[:res.A])
@@ -119,25 +115,27 @@ def _c_build_dictionary(strings, min_len, max_len, max_dict, exh_max_depth, nthr
     return alphabet, byte_to_id, dictionary, seqs
 
 
-# ---------------------------
-# Exponential encoding (QRscript Appendix A / QRtree Appendix C)
-# ---------------------------
 def needed_bits(n: int) -> int:
     """Minimum number of bits needed to represent n distinct values."""
+    
     return 1 if n <= 1 else math.ceil(math.log2(n))
 
 
 def _exponential_ones_value(ones: int) -> int:
     """Recursive helper for the exponential encoding's cumulative offset."""
+    
     if ones == 0:
         return 0
+    
     if ones == 4:
         return 2 ** ones - 1
+    
     return _exponential_ones_value(ones // 2) + 2 ** (ones // 2) - 1
 
 
 def reference_encoding(value: int) -> str:
     """Encode a non-negative int using QRscript's exponential encoding."""
+    
     if not (isinstance(value, int) and value >= 0):
         raise Exception(f"The value {value} is not a valid non-negative integer")
 
@@ -154,11 +152,9 @@ def reference_encoding(value: int) -> str:
         length = length * 2
 
 
-# ---------------------------
-# Huffman (canonical), unique encoding: huffman-len
-# ---------------------------
 def huffman_lengths(freq_map: dict) -> dict:
     """Compute optimal Huffman code lengths for a symbol frequency map."""
+    
     if not freq_map:
         return {}
 
@@ -188,6 +184,7 @@ def huffman_lengths(freq_map: dict) -> dict:
 
 def canonical_codes(lengths: dict) -> dict:
     """Build canonical Huffman codes (symbol -> (code, length)) from lengths."""
+    
     syms = sorted(lengths.keys(), key=lambda s: (lengths[s], s))
 
     codes = {}
@@ -209,6 +206,7 @@ def canonical_codes(lengths: dict) -> dict:
 
 def huffman_len_lengths(freqs: dict, count: int) -> dict:
     """Huffman lengths capped at 15 bits, so they fit in a 4-bit header field."""
+    
     lengths = huffman_lengths({i: freqs.get(i, 1) for i in range(count)})
     if not lengths or max(lengths.values(), default=0) <= 15:
         return lengths
@@ -218,8 +216,10 @@ def huffman_len_lengths(freqs: dict, count: int) -> dict:
 
     while True:
         kraft_sum = sum(1 << (15 - L) for L in new_lengths.values())
+        
         if kraft_sum <= target:
             break
+        
         candidates = [sym for sym, L in new_lengths.items() if L < 15]
         best_sym = max(candidates, key=lambda s: (new_lengths[s], s))
         new_lengths[best_sym] += 1
@@ -234,29 +234,30 @@ def huffman_symbol_bits(sym_id: int, codes: dict) -> str:
 
 def huffman_overhead_bits(freqs: dict, count: int) -> str:
     """Length table (4 bits/symbol) written to the header for decoding."""
+    
     lens = huffman_len_lengths(freqs, count) if count > 0 else {}
     return "".join(format(lens.get(i, 1), '04b') for i in range(count))
 
 
 def count_tok_freqs(seqs: list) -> dict:
     """Frequency of each dictionary token across all sequences."""
+    
     tok_freqs = defaultdict(int)
     for seq in seqs:
         for typ, val in seq:
             if typ == TOK:
                 tok_freqs[val] += 1
+    
     return tok_freqs
 
 
-# ---------------------------
-# Serialization: header dictionary body + compressed strings, as
-# '0'/'1' strings (matches myParser.py's bit-string style)
-# ---------------------------
 def dict_bitstring(dictionary: list, alphabet: bytes, char_freqs: dict, tok_freqs: dict, byte_to_id: dict) -> str:
     """Serialize the local dictionary body (alphabet + fragments), no command opcode."""
+    
     out = reference_encoding(len(alphabet))
     for b in alphabet:
         out += format(b, '08b')
+    
     out += huffman_overhead_bits(char_freqs, len(alphabet))
 
     char_lengths_by_id = huffman_len_lengths(char_freqs, len(alphabet))
@@ -265,8 +266,10 @@ def dict_bitstring(dictionary: list, alphabet: bytes, char_freqs: dict, tok_freq
     out += reference_encoding(len(dictionary))
     for entry in dictionary:
         out += reference_encoding(len(entry))
+        
         for b in entry:
             out += huffman_symbol_bits(byte_to_id[b], char_codes)
+    
     out += huffman_overhead_bits(tok_freqs, len(dictionary))
 
     return out
@@ -274,6 +277,7 @@ def dict_bitstring(dictionary: list, alphabet: bytes, char_freqs: dict, tok_freq
 
 def compressed_string_bitstring(seq: list, byte_to_id: dict, char_codes: dict, tok_codes: dict) -> str:
     """Serialize one tokenized string: symbol count + flagged RAW/TOK symbols."""
+    
     out = reference_encoding(len(seq))
 
     for typ, val in seq:
@@ -285,13 +289,13 @@ def compressed_string_bitstring(seq: list, byte_to_id: dict, char_codes: dict, t
     return out
 
 
-def compress_program_strings(strings: list, min_len: int = MIN_LEN_DEFAULT, max_len: int = MAX_LEN_DEFAULT, max_dict: int = MAX_DICT_DEFAULT, exh_max_depth: int = EXH_MAX_DEPTH, nthreads: int = 0) -> dict:
-    """Entry point: dictionary search in C, then Python codec + serialization"""
+def compress_program_strings(strings: list, min_len: int = MIN_LEN_DEFAULT, max_len: int = MAX_LEN_DEFAULT, max_dict: int = MAX_DICT_DEFAULT, nthreads: int = 0) -> dict:
+    """Entry point: dictionary search in C, then Python codec + serialization."""
     
     if nthreads == 0:
         nthreads = os.cpu_count() or 1
 
-    alphabet, byte_to_id, dictionary, seqs = _c_build_dictionary(strings, min_len, max_len, max_dict, exh_max_depth, nthreads)
+    alphabet, byte_to_id, dictionary, seqs = _c_build_dictionary(strings, min_len, max_len, max_dict, nthreads)
 
     byte_strings = [s.encode('utf-8') for s in strings]
     char_freq_by_byte = defaultdict(int)
