@@ -21,8 +21,6 @@ class Parser:
 
     # Compress program strings, write the DICT_LOCAL header, then parse
     def encode(self, source_text, min_len = 2, max_len = 32, max_dict = 1023, exh_max_depth = 1):
-        """Compress program strings, write the DICT_LOCAL header, then parse."""
-        
         strings = self._extract_program_strings(source_text)
 
         result = compress_program_strings(strings, min_len = min_len, max_len = max_len, max_dict = max_dict, exh_max_depth = exh_max_depth)
@@ -40,7 +38,10 @@ class Parser:
         seq = self.compressed['seqs'][self.compressed_idx]
         self.compressed_idx += 1
         
-        return compressed_string_bitstring(seq, self.compressed['byte_to_id'], self.compressed['char_codes'], self.compressed['tok_codes'])
+        return compressed_string_bitstring(
+            seq, self.compressed['byte_to_id'],
+            self.compressed['char_codes'], self.compressed['tok_codes'],
+        )
 
     # Functions to encode references using the exponential encoding defined in the paper
     def _exponential_ones_value(self, ones: int) -> int:
