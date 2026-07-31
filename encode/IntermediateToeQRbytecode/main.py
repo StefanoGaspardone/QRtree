@@ -16,9 +16,9 @@ import os
 def encode(file, debug):
     fileName = os.path.splitext(file)[0]
     scanner = Scanner(debug)
-    parser = Parser(scanner, fileName, debug)
+    parser_obj = Parser(scanner, fileName, debug)
 
-    parser = parser.parser
+    with open(f"{fileName}.qr", 'r', encoding = 'utf-8') as input_file:
+        source_text = input_file.read()
 
-    with open(f"{fileName}.qr", 'r', encoding='utf-8') as input:
-        parser.parse(input.read())
+    parser_obj.encode(source_text)

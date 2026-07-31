@@ -1,25 +1,46 @@
 from .myScanner import *
+from .compression import compress_program_strings, compressed_string_bitstring
 import ply.yacc as yacc
 import struct
+import re
 
 class Parser:
 
-    def __init__(self,lexer, fileName, debug=False):
-        self.parser = yacc.yacc(module=self, debug=debug)
+    def __init__(self,lexer, fileName, debug = False):
+        self.parser = yacc.yacc(module = self, debug = debug)
         self.lexer = lexer
-        self.output = open(f"{fileName}.bin", "w")
-        self.endCharAscii = '0000011'
-        self.endCharUtf = '00000011'
+        self.fileName = fileName
+        self.compressed = None
+        self.compressed_idx = 0
+        
+    
+    # Collect all quoted string literals from the .qr source, in order
+    def _extract_program_strings(self, source_text):
+        return re.findall(r'"([^"]*)"', source_text)
 
 
-    # Encodes the strings in ascii-7 or UTF-8 based on the most suitable and most compact encoding for the specified string
-    def stringEncoding(self,string):
-        res = ''
-        if(string.isascii()):
-            res = '00' + ''.join(format(i, '07b') for i in bytearray(string, encoding ='ascii')) + self.endCharAscii
-        else:
-            res = '01' + ''.join(format(i, '08b') for i in bytearray(string, encoding ='utf-8')) + self.endCharUtf
-        return res
+    # Compress program strings, write the DICT_LOCAL header, then parse
+    def encode(self, source_text, min_len = 2, max_len = 32, max_dict = 1023, exh_max_depth = 1):
+        """Compress program strings, write the DICT_LOCAL header, then parse."""
+        
+        strings = self._extract_program_strings(source_text)
+
+        result = compress_program_strings(strings, min_len = min_len, max_len = max_len, max_dict = max_dict, exh_max_depth = exh_max_depth)
+        self.compressed = result
+        self.compressed_idx = 0
+
+        self.output = open(f"{self.fileName}.bin", "w")
+        self.output.write("101" + result['dict_bits'])
+
+        self.parser.parse(source_text)
+
+
+    # Return the pre-computed compressed bitstring for the next string
+    def stringEncoding(self, string):
+        seq = self.compressed['seqs'][self.compressed_idx]
+        self.compressed_idx += 1
+        
+        return compressed_string_bitstring(seq, self.compressed['byte_to_id'], self.compressed['char_codes'], self.compressed['tok_codes'])
 
     # Functions to encode references using the exponential encoding defined in the paper
     def _exponential_ones_value(self, ones: int) -> int:

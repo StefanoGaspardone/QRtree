@@ -6,7 +6,7 @@ _tabversion = '3.10'
 
 _lr_method = 'LALR'
 
-_lr_signature = 'EQ GOTO IF IFC INPUT INPUTS INTEGER MAJ MAJ_EQ MIN MIN_EQ NEQ PRINT PRINTEX RC REAL RO STRING nl ws\n        prog : op_list\n        \n        op_list : op_list op\n                | op\n        \n        op : RO INTEGER RC input\n            | RO INTEGER RC inputs\n            | RO INTEGER RC print\n            | RO INTEGER RC printex\n            | RO INTEGER RC goto\n            | RO INTEGER RC if\n            | RO INTEGER RC ifc\n        \n        input : INPUT constant\n        \n        inputs : INPUTS constant\n        \n        print : PRINT constant\n        \n        printex : PRINTEX constant\n        \n        goto : GOTO RO INTEGER RC\n        \n        if : IF constant RO INTEGER RC\n        \n        ifc : IFC rel_op operand RO INTEGER RC\n        \n        constant : STRING \n                | INTEGER\n        \n        rel_op : EQ \n                | NEQ\n                | MAJ_EQ \n                | MIN_EQ\n                | MAJ \n                | MIN\n        \n        operand : INTEGER\n                | REAL\n        '
+_lr_signature = 'EQ GOTO IF IFC INPUT INPUTS INTEGER MAJ MAJ_EQ MIN MIN_EQ NEQ PRINT PRINTEX RC REAL RO STRING nl ws\nprog : op_list\n\nop_list : op_list op\n        | op\n\nop : RO INTEGER RC input\n    | RO INTEGER RC inputs\n    | RO INTEGER RC print\n    | RO INTEGER RC printex\n    | RO INTEGER RC goto\n    | RO INTEGER RC if\n    | RO INTEGER RC ifc\n\ninput : INPUT constant\n\ninputs : INPUTS constant\n\nprint : PRINT constant\n\nprintex : PRINTEX constant\n\ngoto : GOTO RO INTEGER RC\n\nif : IF constant RO INTEGER RC\n\nifc : IFC rel_op operand RO INTEGER RC\n\nconstant : STRING \n        | INTEGER\n\nrel_op : EQ \n        | NEQ\n        | MAJ_EQ \n        | MIN_EQ\n        | MAJ \n        | MIN\n\noperand : INTEGER\n        | REAL\n'
     
 _lr_action_items = {'RO':([0,2,3,5,8,9,10,11,12,13,14,19,22,23,24,25,26,27,29,39,40,41,42,45,47,],[4,4,-3,-2,-4,-5,-6,-7,-8,-9,-10,28,-11,-18,-19,-12,-13,-14,38,44,-26,-27,-15,-16,-17,]),'$end':([1,2,3,5,8,9,10,11,12,13,14,22,23,24,25,26,27,42,45,47,],[0,-1,-3,-2,-4,-5,-6,-7,-8,-9,-10,-11,-18,-19,-12,-13,-14,-15,-16,-17,]),'INTEGER':([4,15,16,17,18,20,28,30,31,32,33,34,35,36,38,44,],[6,24,24,24,24,24,37,40,-20,-21,-22,-23,-24,-25,43,46,]),'RC':([6,37,43,46,],[7,42,45,47,]),'INPUT':([7,],[15,]),'INPUTS':([7,],[16,]),'PRINT':([7,],[17,]),'PRINTEX':([7,],[18,]),'GOTO':([7,],[19,]),'IF':([7,],[20,]),'IFC':([7,],[21,]),'STRING':([15,16,17,18,20,],[23,23,23,23,23,]),'EQ':([21,],[31,]),'NEQ':([21,],[32,]),'MAJ_EQ':([21,],[33,]),'MIN_EQ':([21,],[34,]),'MAJ':([21,],[35,]),'MIN':([21,],[36,]),'REAL':([30,31,32,33,34,35,36,],[41,-20,-21,-22,-23,-24,-25,]),}
 
@@ -27,31 +27,31 @@ for _k, _v in _lr_goto_items.items():
 del _lr_goto_items
 _lr_productions = [
   ("S' -> prog","S'",1,None,None,None),
-  ('prog -> op_list','prog',1,'p_prog','myParser.py',35),
-  ('op_list -> op_list op','op_list',2,'p_op_list','myParser.py',40),
-  ('op_list -> op','op_list',1,'p_op_list','myParser.py',41),
-  ('op -> RO INTEGER RC input','op',4,'p_op','myParser.py',46),
-  ('op -> RO INTEGER RC inputs','op',4,'p_op','myParser.py',47),
-  ('op -> RO INTEGER RC print','op',4,'p_op','myParser.py',48),
-  ('op -> RO INTEGER RC printex','op',4,'p_op','myParser.py',49),
-  ('op -> RO INTEGER RC goto','op',4,'p_op','myParser.py',50),
-  ('op -> RO INTEGER RC if','op',4,'p_op','myParser.py',51),
-  ('op -> RO INTEGER RC ifc','op',4,'p_op','myParser.py',52),
-  ('input -> INPUT constant','input',2,'p_input','myParser.py',57),
-  ('inputs -> INPUTS constant','inputs',2,'p_inputs','myParser.py',69),
-  ('print -> PRINT constant','print',2,'p_print','myParser.py',81),
-  ('printex -> PRINTEX constant','printex',2,'p_printex','myParser.py',93),
-  ('goto -> GOTO RO INTEGER RC','goto',4,'p_goto','myParser.py',105),
-  ('if -> IF constant RO INTEGER RC','if',5,'p_if','myParser.py',114),
-  ('ifc -> IFC rel_op operand RO INTEGER RC','ifc',6,'p_ifc','myParser.py',127),
-  ('constant -> STRING','constant',1,'p_constant','myParser.py',141),
-  ('constant -> INTEGER','constant',1,'p_constant','myParser.py',142),
-  ('rel_op -> EQ','rel_op',1,'p_rel_op','myParser.py',149),
-  ('rel_op -> NEQ','rel_op',1,'p_rel_op','myParser.py',150),
-  ('rel_op -> MAJ_EQ','rel_op',1,'p_rel_op','myParser.py',151),
-  ('rel_op -> MIN_EQ','rel_op',1,'p_rel_op','myParser.py',152),
-  ('rel_op -> MAJ','rel_op',1,'p_rel_op','myParser.py',153),
-  ('rel_op -> MIN','rel_op',1,'p_rel_op','myParser.py',154),
-  ('operand -> INTEGER','operand',1,'p_operand','myParser.py',172),
-  ('operand -> REAL','operand',1,'p_operand','myParser.py',173),
+  ('prog -> op_list','prog',1,'p_prog','myParser.py',84),
+  ('op_list -> op_list op','op_list',2,'p_op_list','myParser.py',90),
+  ('op_list -> op','op_list',1,'p_op_list','myParser.py',91),
+  ('op -> RO INTEGER RC input','op',4,'p_op','myParser.py',96),
+  ('op -> RO INTEGER RC inputs','op',4,'p_op','myParser.py',97),
+  ('op -> RO INTEGER RC print','op',4,'p_op','myParser.py',98),
+  ('op -> RO INTEGER RC printex','op',4,'p_op','myParser.py',99),
+  ('op -> RO INTEGER RC goto','op',4,'p_op','myParser.py',100),
+  ('op -> RO INTEGER RC if','op',4,'p_op','myParser.py',101),
+  ('op -> RO INTEGER RC ifc','op',4,'p_op','myParser.py',102),
+  ('input -> INPUT constant','input',2,'p_input','myParser.py',110),
+  ('inputs -> INPUTS constant','inputs',2,'p_inputs','myParser.py',121),
+  ('print -> PRINT constant','print',2,'p_print','myParser.py',132),
+  ('printex -> PRINTEX constant','printex',2,'p_printex','myParser.py',143),
+  ('goto -> GOTO RO INTEGER RC','goto',4,'p_goto','myParser.py',154),
+  ('if -> IF constant RO INTEGER RC','if',5,'p_if','myParser.py',162),
+  ('ifc -> IFC rel_op operand RO INTEGER RC','ifc',6,'p_ifc','myParser.py',174),
+  ('constant -> STRING','constant',1,'p_constant','myParser.py',196),
+  ('constant -> INTEGER','constant',1,'p_constant','myParser.py',197),
+  ('rel_op -> EQ','rel_op',1,'p_rel_op','myParser.py',205),
+  ('rel_op -> NEQ','rel_op',1,'p_rel_op','myParser.py',206),
+  ('rel_op -> MAJ_EQ','rel_op',1,'p_rel_op','myParser.py',207),
+  ('rel_op -> MIN_EQ','rel_op',1,'p_rel_op','myParser.py',208),
+  ('rel_op -> MAJ','rel_op',1,'p_rel_op','myParser.py',209),
+  ('rel_op -> MIN','rel_op',1,'p_rel_op','myParser.py',210),
+  ('operand -> INTEGER','operand',1,'p_operand','myParser.py',228),
+  ('operand -> REAL','operand',1,'p_operand','myParser.py',229),
 ]

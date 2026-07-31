@@ -6,7 +6,7 @@ _tabversion = '3.10'
 
 _lr_method = 'LALR'
 
-_lr_signature = 'nonassocELSEleftLTLTEQGTGTEQCOLUMN DEDENT ELSE EQ EXIT FLOAT16 FLOAT32 GT GTEQ IF IFC INDENT INPUT INPUTS INT LT LTEQ NE PRINT STRING\n        progr : statement_list\n        \n        statement_list : statement_list statement\n        \n        statement_list : statement\n        \n        statement : input_statement\n                | inputs_statement\n                | print_statement\n                | exit_statement\n        \n        statement : if_statement\n                | ifc_statement\n        \n        statement : empty\n        \n        input_statement : INPUT STRING\n        \n        inputs_statement : INPUTS STRING\n        \n        input_statement : INPUT INT\n        \n        inputs_statement : INPUTS INT\n        \n        print_statement : PRINT STRING\n        \n        print_statement : PRINT INT\n        \n        exit_statement : EXIT\n        \n        block : INDENT statement_list DEDENT\n        \n        if_statement : IF STRING COLUMN block else_if_list\n        \n        if_statement : IF STRING COLUMN block else_if_list ELSE COLUMN block\n        \n        else_if_list : else_if_list ELSE IF STRING COLUMN block\n        \n        else_if_list : empty\n        \n        ifc_statement : IFC comp_expr COLUMN block else_ifc_list\n        \n        ifc_statement : IFC comp_expr COLUMN block else_ifc_list ELSE COLUMN block\n        \n        else_ifc_list : else_ifc_list ELSE IFC comp_expr COLUMN block\n        \n        else_ifc_list : empty\n        \n        comp_expr : LT INT\n                | LT FLOAT16\n                | LT FLOAT32\n        \n        comp_expr : LTEQ INT\n                | LTEQ FLOAT16\n                | LTEQ FLOAT32\n        \n        comp_expr : GT INT\n                | GT FLOAT16\n                | GT FLOAT32\n        \n        comp_expr : GTEQ INT\n                | GTEQ FLOAT16\n                | GTEQ FLOAT32\n        \n        comp_expr : EQ INT\n                | EQ FLOAT16\n                | EQ FLOAT32\n        \n        comp_expr : NE INT\n                | NE FLOAT16\n                | NE FLOAT32\n        \n        empty :\n        '
+_lr_signature = 'nonassocELSEleftLTLTEQGTGTEQCOLUMN DEDENT ELSE EQ EXIT FLOAT16 FLOAT32 GT GTEQ IF IFC INDENT INPUT INPUTS INT LT LTEQ NE PRINT STRING\nprogr : statement_list\n\nstatement_list : statement_list statement\n\nstatement_list : statement\n\nstatement : input_statement\n        | inputs_statement\n        | print_statement\n        | exit_statement\n\nstatement : if_statement\n        | ifc_statement\n\nstatement : empty\n\ninput_statement : INPUT STRING\n\ninputs_statement : INPUTS STRING\n\ninput_statement : INPUT INT\n\ninputs_statement : INPUTS INT\n\nprint_statement : PRINT STRING\n\nprint_statement : PRINT INT\n\nexit_statement : EXIT\n\nblock : INDENT statement_list DEDENT\n\nif_statement : IF STRING COLUMN block else_if_list\n\nif_statement : IF STRING COLUMN block else_if_list ELSE COLUMN block\n\nelse_if_list : else_if_list ELSE IF STRING COLUMN block\n\nelse_if_list : empty\n\nifc_statement : IFC comp_expr COLUMN block else_ifc_list\n\nifc_statement : IFC comp_expr COLUMN block else_ifc_list ELSE COLUMN block\n\nelse_ifc_list : else_ifc_list ELSE IFC comp_expr COLUMN block\n\nelse_ifc_list : empty\n\ncomp_expr : LT INT\n        | LT FLOAT16\n        | LT FLOAT32\n\ncomp_expr : LTEQ INT\n        | LTEQ FLOAT16\n        | LTEQ FLOAT32\n\ncomp_expr : GT INT\n        | GT FLOAT16\n        | GT FLOAT32\n\ncomp_expr : GTEQ INT\n        | GTEQ FLOAT16\n        | GTEQ FLOAT32\n\ncomp_expr : EQ INT\n        | EQ FLOAT16\n        | EQ FLOAT32\n\ncomp_expr : NE INT\n        | NE FLOAT16\n        | NE FLOAT32\n\nempty :\n'
     
 _lr_action_items = {'INPUT':([0,2,3,4,5,6,7,8,9,10,14,17,18,19,20,21,22,23,52,53,54,55,56,57,58,59,61,68,70,73,74,],[11,11,-3,-4,-5,-6,-7,-8,-9,-10,-17,-2,-11,-13,-12,-14,-15,-16,-45,11,-45,-19,-22,11,-23,-26,-18,-20,-24,-21,-25,]),'INPUTS':([0,2,3,4,5,6,7,8,9,10,14,17,18,19,20,21,22,23,52,53,54,55,56,57,58,59,61,68,70,73,74,],[12,12,-3,-4,-5,-6,-7,-8,-9,-10,-17,-2,-11,-13,-12,-14,-15,-16,-45,12,-45,-19,-22,12,-23,-26,-18,-20,-24,-21,-25,]),'PRINT':([0,2,3,4,5,6,7,8,9,10,14,17,18,19,20,21,22,23,52,53,54,55,56,57,58,59,61,68,70,73,74,],[13,13,-3,-4,-5,-6,-7,-8,-9,-10,-17,-2,-11,-13,-12,-14,-15,-16,-45,13,-45,-19,-22,13,-23,-26,-18,-20,-24,-21,-25,]),'EXIT':([0,2,3,4,5,6,7,8,9,10,14,17,18,19,20,21,22,23,52,53,54,55,56,57,58,59,61,68,70,73,74,],[14,14,-3,-4,-5,-6,-7,-8,-9,-10,-17,-2,-11,-13,-12,-14,-15,-16,-45,14,-45,-19,-22,14,-23,-26,-18,-20,-24,-21,-25,]),'IF':([0,2,3,4,5,6,7,8,9,10,14,17,18,19,20,21,22,23,52,53,54,55,56,57,58,59,60,61,68,70,73,74,],[15,15,-3,-4,-5,-6,-7,-8,-9,-10,-17,-2,-11,-13,-12,-14,-15,-16,-45,15,-45,-19,-22,15,-23,-26,63,-18,-20,-24,-21,-25,]),'IFC':([0,2,3,4,5,6,7,8,9,10,14,17,18,19,20,21,22,23,52,53,54,55,56,57,58,59,61,62,68,70,73,74,],[16,16,-3,-4,-5,-6,-7,-8,-9,-10,-17,-2,-11,-13,-12,-14,-15,-16,-45,16,-45,-19,-22,16,-23,-26,-18,65,-20,-24,-21,-25,]),'$end':([0,1,2,3,4,5,6,7,8,9,10,14,17,18,19,20,21,22,23,52,54,55,56,58,59,61,68,70,73,74,],[-45,0,-1,-3,-4,-5,-6,-7,-8,-9,-10,-17,-2,-11,-13,-12,-14,-15,-16,-45,-45,-19,-22,-23,-26,-18,-20,-24,-21,-25,]),'DEDENT':([3,4,5,6,7,8,9,10,14,17,18,19,20,21,22,23,52,53,54,55,56,57,58,59,61,68,70,73,74,],[-3,-4,-5,-6,-7,-8,-9,-10,-17,-2,-11,-13,-12,-14,-15,-16,-45,-45,-45,-19,-22,61,-23,-26,-18,-20,-24,-21,-25,]),'STRING':([11,12,13,15,63,],[18,20,22,24,67,]),'INT':([11,12,13,26,27,28,29,30,31,],[19,21,23,34,37,40,43,46,49,]),'LT':([16,65,],[26,26,]),'LTEQ':([16,65,],[27,27,]),'GT':([16,65,],[28,28,]),'GTEQ':([16,65,],[29,29,]),'EQ':([16,65,],[30,30,]),'NE':([16,65,],[31,31,]),'COLUMN':([24,25,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,60,62,67,69,],[32,33,-27,-28,-29,-30,-31,-32,-33,-34,-35,-36,-37,-38,-39,-40,-41,-42,-43,-44,64,66,71,72,]),'FLOAT16':([26,27,28,29,30,31,],[35,38,41,44,47,50,]),'FLOAT32':([26,27,28,29,30,31,],[36,39,42,45,48,51,]),'INDENT':([32,33,64,66,71,72,],[53,53,53,53,53,53,]),'ELSE':([52,54,55,56,58,59,61,73,74,],[-45,-45,60,-22,62,-26,-18,-21,-25,]),}
 
@@ -50,26 +50,26 @@ _lr_productions = [
   ('else_if_list -> else_if_list ELSE IF STRING COLUMN block','else_if_list',6,'p_else_if_list','parser.py',160),
   ('else_if_list -> empty','else_if_list',1,'p_else_if_list_empty','parser.py',166),
   ('ifc_statement -> IFC comp_expr COLUMN block else_ifc_list','ifc_statement',5,'p_ifc_statement','parser.py',172),
-  ('ifc_statement -> IFC comp_expr COLUMN block else_ifc_list ELSE COLUMN block','ifc_statement',8,'p_ifc_statement_else','parser.py',194),
-  ('else_ifc_list -> else_ifc_list ELSE IFC comp_expr COLUMN block','else_ifc_list',6,'p_else_ifc_list','parser.py',216),
-  ('else_ifc_list -> empty','else_ifc_list',1,'p_else_ifc_list_empty','parser.py',222),
-  ('comp_expr -> LT INT','comp_expr',2,'p_comp_expr_lt','parser.py',228),
-  ('comp_expr -> LT FLOAT16','comp_expr',2,'p_comp_expr_lt','parser.py',229),
-  ('comp_expr -> LT FLOAT32','comp_expr',2,'p_comp_expr_lt','parser.py',230),
-  ('comp_expr -> LTEQ INT','comp_expr',2,'p_comp_expr_lteq','parser.py',236),
-  ('comp_expr -> LTEQ FLOAT16','comp_expr',2,'p_comp_expr_lteq','parser.py',237),
-  ('comp_expr -> LTEQ FLOAT32','comp_expr',2,'p_comp_expr_lteq','parser.py',238),
-  ('comp_expr -> GT INT','comp_expr',2,'p_comp_expr_gt','parser.py',244),
-  ('comp_expr -> GT FLOAT16','comp_expr',2,'p_comp_expr_gt','parser.py',245),
-  ('comp_expr -> GT FLOAT32','comp_expr',2,'p_comp_expr_gt','parser.py',246),
-  ('comp_expr -> GTEQ INT','comp_expr',2,'p_comp_expr_gteq','parser.py',252),
-  ('comp_expr -> GTEQ FLOAT16','comp_expr',2,'p_comp_expr_gteq','parser.py',253),
-  ('comp_expr -> GTEQ FLOAT32','comp_expr',2,'p_comp_expr_gteq','parser.py',254),
-  ('comp_expr -> EQ INT','comp_expr',2,'p_comp_expr_eq','parser.py',260),
-  ('comp_expr -> EQ FLOAT16','comp_expr',2,'p_comp_expr_eq','parser.py',261),
-  ('comp_expr -> EQ FLOAT32','comp_expr',2,'p_comp_expr_eq','parser.py',262),
-  ('comp_expr -> NE INT','comp_expr',2,'p_comp_expr_ne','parser.py',268),
-  ('comp_expr -> NE FLOAT16','comp_expr',2,'p_comp_expr_ne','parser.py',269),
-  ('comp_expr -> NE FLOAT32','comp_expr',2,'p_comp_expr_ne','parser.py',270),
-  ('empty -> <empty>','empty',0,'p_empty','parser.py',276),
+  ('ifc_statement -> IFC comp_expr COLUMN block else_ifc_list ELSE COLUMN block','ifc_statement',8,'p_ifc_statement_else','parser.py',196),
+  ('else_ifc_list -> else_ifc_list ELSE IFC comp_expr COLUMN block','else_ifc_list',6,'p_else_ifc_list','parser.py',220),
+  ('else_ifc_list -> empty','else_ifc_list',1,'p_else_ifc_list_empty','parser.py',226),
+  ('comp_expr -> LT INT','comp_expr',2,'p_comp_expr_lt','parser.py',232),
+  ('comp_expr -> LT FLOAT16','comp_expr',2,'p_comp_expr_lt','parser.py',233),
+  ('comp_expr -> LT FLOAT32','comp_expr',2,'p_comp_expr_lt','parser.py',234),
+  ('comp_expr -> LTEQ INT','comp_expr',2,'p_comp_expr_lteq','parser.py',240),
+  ('comp_expr -> LTEQ FLOAT16','comp_expr',2,'p_comp_expr_lteq','parser.py',241),
+  ('comp_expr -> LTEQ FLOAT32','comp_expr',2,'p_comp_expr_lteq','parser.py',242),
+  ('comp_expr -> GT INT','comp_expr',2,'p_comp_expr_gt','parser.py',248),
+  ('comp_expr -> GT FLOAT16','comp_expr',2,'p_comp_expr_gt','parser.py',249),
+  ('comp_expr -> GT FLOAT32','comp_expr',2,'p_comp_expr_gt','parser.py',250),
+  ('comp_expr -> GTEQ INT','comp_expr',2,'p_comp_expr_gteq','parser.py',256),
+  ('comp_expr -> GTEQ FLOAT16','comp_expr',2,'p_comp_expr_gteq','parser.py',257),
+  ('comp_expr -> GTEQ FLOAT32','comp_expr',2,'p_comp_expr_gteq','parser.py',258),
+  ('comp_expr -> EQ INT','comp_expr',2,'p_comp_expr_eq','parser.py',264),
+  ('comp_expr -> EQ FLOAT16','comp_expr',2,'p_comp_expr_eq','parser.py',265),
+  ('comp_expr -> EQ FLOAT32','comp_expr',2,'p_comp_expr_eq','parser.py',266),
+  ('comp_expr -> NE INT','comp_expr',2,'p_comp_expr_ne','parser.py',272),
+  ('comp_expr -> NE FLOAT16','comp_expr',2,'p_comp_expr_ne','parser.py',273),
+  ('comp_expr -> NE FLOAT32','comp_expr',2,'p_comp_expr_ne','parser.py',274),
+  ('empty -> <empty>','empty',0,'p_empty','parser.py',280),
 ]

@@ -58,7 +58,7 @@ class Parser:
     # A program is a list of the encodings of the instruction of QRtree
     def p_prog(self,p):
         '''
-        prog : op_list
+        prog : DICT_HEADER op_list
         '''
         self.output.close()
 
@@ -91,10 +91,7 @@ class Parser:
         '''
 
         if(p[4] == '0'):
-            if(p[5][0] == "00"):
-                self.output.write("(" + str(self.curline) + ") input " + '"' + self.binStrToStrAscii(p[5][1]) + '"' + '\n')
-            else:
-                self.output.write("(" + str(self.curline) + ") input " + '"' + self.binStrToStrUtf(p[5][1]) + '"' + '\n')
+            self.output.write("(" + str(self.curline) + ") input " + '"' + p[5] + '"' + '\n')
         else:
             self.output.write("(" + str(self.curline) + ") input " + str(self.binRefToIntRef(p[5])) + '\n')
         self.curline += 1
@@ -106,10 +103,7 @@ class Parser:
         '''
 
         if(p[4] == '0'):
-            if(p[5][0] == "00"):
-                self.output.write("(" + str(self.curline) + ") inputs " + '"' + self.binStrToStrAscii(p[5][1]) + '"' + '\n')
-            else:
-                self.output.write("(" + str(self.curline) + ") inputs " + '"' + self.binStrToStrUtf(p[5][1]) + '"' + '\n')
+            self.output.write("(" + str(self.curline) + ") inputs " + '"' + p[5] + '"' + '\n')
         else:
             self.output.write("(" + str(self.curline) + ") inputs " + str(self.binRefToIntRef(p[5])) + '\n')
         self.curline += 1
@@ -121,10 +115,7 @@ class Parser:
         '''
 
         if(p[4] == '0'):
-            if(p[5][0] == "00"):
-                self.output.write("(" + str(self.curline) + ") print " + '"' + self.binStrToStrAscii(p[5][1]) + '"' + '\n')
-            else:
-                self.output.write("(" + str(self.curline) + ") print " + '"' + self.binStrToStrUtf(p[5][1]) + '"' + '\n')
+            self.output.write("(" + str(self.curline) + ") print " + '"' + p[5] + '"' + '\n')
         else:
             self.output.write("(" + str(self.curline) + ") print " + str(self.binRefToIntRef(p[5])) + '\n')
         self.curline += 1
@@ -136,14 +127,11 @@ class Parser:
         '''
 
         if(p[4] == '0'):
-            if(p[5][0] == "00"):
-                self.output.write("(" + str(self.curline) + ") printex " + '"' + self.binStrToStrAscii(p[5][1]) + '"' + '\n')
-            else:
-                self.output.write("(" + str(self.curline) + ") printex " + '"' + self.binStrToStrUtf(p[5][1]) + '"' + '\n')
+            self.output.write("(" + str(self.curline) + ") printex " + '"' + p[5] + '"' + '\n')
         else:
             self.output.write("(" + str(self.curline) + ") printex " + str(self.binRefToIntRef(p[5])) + '\n')
         self.curline += 1
-
+        
     def p_goto(self,p):
         '''
         goto : ONE ZERO ZERO number
@@ -159,10 +147,7 @@ class Parser:
         '''
 
         if(p[4] == '0'):
-            if(p[5][0] == "00"):
-                self.output.write("(" + str(self.curline) + ") if " + '"' + self.binStrToStrAscii(p[5][1]) + '"' + " (" + str(self.binRefToIntRef(p[6]) + self.curline + 1) + ")" + '\n')
-            else:
-                self.output.write("(" + str(self.curline) + ") if " + '"' + self.binStrToStrUtf(p[5][1]) + '"' + " (" + str(self.binRefToIntRef(p[6]) + self.curline + 1) + ")" + '\n')
+            self.output.write("(" + str(self.curline) + ") if " + '"' + p[5] + '"' + " (" + str(self.binRefToIntRef(p[6]) + self.curline + 1) + ")" + '\n')
         else:
             self.output.write("(" + str(self.curline) + ") if " + str(self.binRefToIntRef(p[5])) + " (" + str(self.binRefToIntRef(p[6]) + self.curline + 1) + ")" + '\n')
         self.curline += 1
@@ -205,16 +190,18 @@ class Parser:
         else:
             self.lexer.lexer.begin('n32')
 
-    def p_constant(self,p):
+    def p_constant(self, p):
         '''
-        constant : stype byte_list eot
-                | stype eot
+        constant : marker4 COMPRESSED_STRING
         '''
+        # COMPRESSED_STRING arrives already decoded by the lexer.
+        p[0] = p[2]
 
-        if(len(p) == 4):
-            p[0] = [ p[1], p[2] ]
-        else:
-            p[0] = [ p[1], "" ]
+    def p_marker4(self, p):
+        '''
+        marker4 :
+        '''
+        self.lexer.lexer.begin('compressed')
 
     def p_stype(self,p):
         '''
