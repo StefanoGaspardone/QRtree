@@ -1,5 +1,5 @@
 from .myScanner import *
-from .compression import compress_program_strings, compressed_string_bitstring
+from .compression import compress_program_strings
 import ply.yacc as yacc
 import struct
 import re
@@ -33,15 +33,13 @@ class Parser:
         self.parser.parse(source_text)
 
 
-    # Return the pre-computed compressed bitstring for the next string
+    # Return the pre-computed (fully C-serialized) compressed bitstring
+    # for the next string, in source order
     def stringEncoding(self, string):
-        seq = self.compressed['seqs'][self.compressed_idx]
+        bits = self.compressed['stream_bits'][self.compressed_idx]
         self.compressed_idx += 1
-        
-        return compressed_string_bitstring(
-            seq, self.compressed['byte_to_id'],
-            self.compressed['char_codes'], self.compressed['tok_codes'],
-        )
+
+        return bits
 
     # Functions to encode references using the exponential encoding defined in the paper
     def _exponential_ones_value(self, ones: int) -> int:

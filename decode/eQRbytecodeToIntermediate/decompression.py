@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# String decompression for QR dialects (reverses compression.py, huffman-len only).
+# String decompression.
 
 
 def exp_read(bits: str, pos: int, n0: int = 4) -> tuple:

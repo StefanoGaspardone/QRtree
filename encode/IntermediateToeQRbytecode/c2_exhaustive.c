@@ -5,27 +5,11 @@
 #include <string.h>
 #include <stdint.h>
 #include <math.h>
-#include <time.h>
-#include <errno.h>
 #include <pthread.h>
-#include <stdarg.h>
-
-#ifdef _WIN32
-    #include <windows.h>
-    #include <direct.h>
-#else
-    #include <libgen.h>
-    #include <unistd.h>
-    #include <sys/stat.h>
-    #include <sys/types.h>
-#endif
 
 /* ============================================================
  * Constants
  * ============================================================ */
-static const uint8_t MAGIC[4] = { 'S', 'D', 'B', '1' };
-#define VERSION 1
-
 #define RAW 0
 #define TOK 1
 
@@ -35,190 +19,7 @@ static const uint8_t MAGIC[4] = { 'S', 'D', 'B', '1' };
 #define ENC_POSITIONAL 3
 
 static int g_nthreads = 1;
-static FILE *g_logfile = NULL;
 
-static void log_line(const char *fmt, ...) {
-    va_list ap1, ap2;
-    va_start(ap1, fmt);
-    va_copy(ap2, ap1);
-
-    vprintf(fmt, ap1);
-    printf("\n");
-    va_end(ap1);
-
-    if(g_logfile) {
-        vfprintf(g_logfile, fmt, ap2);
-        fprintf(g_logfile, "\n");
-        fflush(g_logfile);
-    }
-
-    va_end(ap2);
-}
-
-#define PROJECT_ROOT_LEVELS 4
-
-static void get_executable_path(char *out, const size_t outsz) {
-#ifdef _WIN32
-    const DWORD n = GetModuleFileNameA(NULL, out, outsz);
-    if(n == 0 || n == outsz) snprintf(out, outsz, ".");
-
-    for(char *p = out; *p; p++) if(*p == '\\') *p = '/';
-#else
-    ssize_t n = readlink("/proc/self/exe", out, outsz - 1);
-
-    if(n < 0) {
-        if(!getcwd(out, outsz)) snprintf(out, outsz, ".");
-    } else out[n] = '\0';
-#endif
-}
-
-static void my_dirname(const char *path, char *out, const size_t outsz) {
-    char tmp[4096];
-    snprintf(tmp, sizeof(tmp), "%s", path);
-
-    size_t len = strlen(tmp);
-    while(len > 0 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\')) tmp[--len] = '\0';
-
-    char *slash = strrchr(tmp, '/');
-    char *bslash = strrchr(tmp, '\\');
-    char *last = slash;
-
-    if(bslash && (!last || bslash > last)) last = bslash;
-
-    if(!last) {
-        snprintf(out, outsz, ".");
-    } else if(last == tmp) {
-        snprintf(out, outsz, "%c", *last);
-    } else {
-        *last = '\0';
-        snprintf(out, outsz, "%s", tmp);
-    }
-}
-
-static void my_basename(const char *path, char *out, size_t outsz) {
-    char tmp[4096];
-    snprintf(tmp, sizeof(tmp), "%s", path);
-
-    size_t len = strlen(tmp);
-    while(len > 0 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\')) tmp[--len] = '\0';
-
-    char *slash = strrchr(tmp, '/');
-    char *bslash = strrchr(tmp, '\\');
-    char *last = slash;
-
-    if(bslash && (!last || bslash > last)) last = bslash;
-
-    snprintf(out, outsz, "%s", last ? last + 1 : tmp);
-}
-
-static void get_project_root(char *out, const size_t outsz) {
-    char cur[4096];
-    get_executable_path(cur, sizeof(cur));
-
-    for(int i = 0; i < PROJECT_ROOT_LEVELS; i++) {
-        char next[4096];
-        my_dirname(cur, next, sizeof(next));
-        snprintf(cur, sizeof(cur), "%s", next);
-    }
-
-    snprintf(out, outsz, "%s", cur);
-}
-
-static void get_exe_stem(char *out, size_t outsz) {
-    char exe_path[4096];
-    get_executable_path(exe_path, sizeof(exe_path));
-
-    char buf[1024];
-    my_basename(exe_path, buf, sizeof(buf));
-
-    char *dot = strrchr(buf, '.');
-    if(dot) *dot = '\0';
-
-    snprintf(out, outsz, "%s", buf);
-}
-
-static void path_stem(const char *path, char *out, const size_t outsz) {
-    char tmp[4096];
-
-    snprintf(tmp, sizeof(tmp), "%s", path);
-
-    char *base = strrchr(tmp, '/');
-    char *bslash = strrchr(tmp, '\\');
-
-    if(bslash && (!base || bslash > base)) base = bslash;
-
-    base = base ? base + 1 : tmp;
-    char buf[1024];
-
-    snprintf(buf, sizeof(buf), "%s", base);
-
-    char *dot = strrchr(buf, '.');
-    if(dot) *dot = '\0';
-
-    snprintf(out, outsz, "%s", buf);
-}
-
-static void portable_mkdir_one(const char *path) {
-#ifdef _WIN32
-    _mkdir(path);
-#else
-    mkdir(path, 0775);
-#endif
-}
-
-static void mkdirs(const char *path) {
-    char tmp[4096];
-
-    snprintf(tmp, sizeof(tmp), "%s", path);
-    const size_t len = strlen(tmp);
-
-    if(len > 0 && tmp[len - 1] == '/') tmp[len - 1] = '\0';
-
-    for(char *p = tmp + 1; *p; p++) {
-        if(*p == '/') {
-            *p = '\0';
-            portable_mkdir_one(tmp);
-            *p = '/';
-        }
-    }
-
-    portable_mkdir_one(tmp);
-}
-
-static void setup_logger(const char *input_filename) {
-    char project_root[4096];
-    get_project_root(project_root, sizeof(project_root));
-
-    char logs_dir[4096];
-    snprintf(logs_dir, sizeof(logs_dir), "%s/logs", project_root);
-    mkdirs(logs_dir);
-
-    time_t now = time(NULL);
-    struct tm tmv;
-#ifdef _WIN32
-    localtime_s(&tmv, &now);
-#else
-    localtime_r(&now, &tmv);
-#endif
-    char timestamp[32];
-    strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", &tmv);
-
-    char script_name[256];
-    get_exe_stem(script_name, sizeof(script_name));
-
-    char base_input[256];
-    path_stem(input_filename, base_input, sizeof(base_input));
-
-    char log_filename[4096];
-    snprintf(log_filename, sizeof(log_filename), "%s/%s_%s_%s.log", logs_dir, script_name, timestamp, base_input);
-
-    g_logfile = fopen(log_filename, "w");
-    if(!g_logfile) fprintf(stderr, "Warning: unable to open log file %s: %s\n", log_filename, strerror(errno));
-}
-
-/* ============================================================
- * Varint (LEB128 unsigned)
- * ============================================================ */
 static size_t uvarint_encode(uint64_t x, uint8_t *out) {
     size_t n = 0;
 
@@ -233,26 +34,6 @@ static size_t uvarint_encode(uint64_t x, uint8_t *out) {
     return n;
 }
 
-static uint64_t uvarint_decode(const uint8_t *data, size_t *pos) {
-    uint64_t x = 0;
-    int shift = 0;
-
-    for(;;) {
-        const uint8_t b = data[*pos];
-        (*pos)++;
-        x |= (uint64_t)(b & 0x7F) << shift;
-
-        if(!(b & 0x80)) return x;
-
-        shift += 7;
-    }
-}
-
-static size_t varint_size(uint64_t x) {
-    uint8_t tmp[16];
-    return uvarint_encode(x, tmp);
-}
-
 static int needed_bits(int64_t n) {
     if(n <= 1) return 1;
     return (int)ceil(log2((double)n));
@@ -264,12 +45,6 @@ static int64_t exponential_ones_value(const int ones) {
     return exponential_ones_value(ones / 2) + (1LL << (ones / 2)) - 1;
 }
 
-/* Mirrors compression.py's reference_encoding_size_bits: the QRscript
- * exponential-encoding cost of an unsigned int, used ONLY in scoring
- * (search decisions) so the C-built dictionary matches what the
- * actual QRtree bitstream will cost -- NOT used by the CLI's own
- * write_* functions, which keep using uvarint for the standalone
- * SDB1 file format. */
 static int ref_enc_size_bits(int64_t value) {
     int length = 4;
 
@@ -284,127 +59,6 @@ static int ref_enc_size_bits(int64_t value) {
 
         length *= 2;
     }
-}
-
-/* ============================================================
- * BitWriter/Reader
- * ============================================================ */
-typedef struct {
-    uint8_t *buf;
-    size_t len;
-    size_t cap;
-    uint32_t acc;
-    int nbits;
-} BitWriter;
-
-static void bw_init(BitWriter *bw) {
-    bw->cap = 4096;
-    bw->buf = (uint8_t *)malloc(bw->cap);
-    bw->len = 0;
-    bw->acc = 0;
-    bw->nbits = 0;
-}
-
-static void bw_ensure(BitWriter *bw, const size_t extra) {
-    if(bw->len + extra > bw->cap) {
-        while(bw->len + extra > bw->cap) bw->cap *= 2;
-        bw->buf = (uint8_t *)realloc(bw->buf, bw->cap);
-    }
-}
-
-static void bw_push_byte(BitWriter *bw, uint8_t b) {
-    bw_ensure(bw, 1);
-    bw->buf[bw->len++] = b;
-}
-
-static void bw_write_bits(BitWriter *bw, const uint64_t value, const int n) {
-    for(int i = n - 1; i >= 0; i--) {
-        bw->acc = (bw->acc << 1) | (uint32_t)((value >> i) & 1ULL);
-        bw->nbits += 1;
-
-        if(bw->nbits == 8) {
-            bw_push_byte(bw, (uint8_t)(bw->acc & 0xFF));
-            bw->acc = 0;
-            bw->nbits = 0;
-        }
-    }
-}
-
-static void bw_flush_to_byte(BitWriter *bw) {
-    if(bw->nbits) {
-        bw->acc <<= 8 - bw->nbits;
-        bw_push_byte(bw, (uint8_t)(bw->acc & 0xFF));
-        bw->acc = 0;
-        bw->nbits = 0;
-    }
-}
-
-static void bw_write_bytes_aligned(BitWriter *bw, const uint8_t *b, const size_t n) {
-    bw_flush_to_byte(bw);
-    bw_ensure(bw, n);
-    memcpy(bw->buf + bw->len, b, n);
-    bw->len += n;
-}
-
-static void bw_write_uvarint_aligned(BitWriter *bw, const uint64_t x) {
-    uint8_t tmp[16];
-    const size_t n = uvarint_encode(x, tmp);
-    bw_write_bytes_aligned(bw, tmp, n);
-}
-
-static uint8_t *bw_getvalue(BitWriter *bw, size_t *outlen) {
-    bw_flush_to_byte(bw);
-    *outlen = bw->len;
-    return bw->buf;
-}
-
-typedef struct {
-    const uint8_t *data;
-    size_t len;
-    size_t pos;
-    uint32_t acc;
-    int nbits;
-} BitReader;
-
-static void br_init(BitReader *br, const uint8_t *data, const size_t len, const size_t pos) {
-    br->data = data;
-    br->len = len;
-    br->pos = pos;
-    br->acc = 0;
-    br->nbits = 0;
-}
-
-static uint64_t br_read_bits(BitReader *br, int n) {
-    uint64_t v = 0;
-
-    for(int i = 0; i < n; i++) {
-        if(br->nbits == 0) {
-            br->acc = br->data[br->pos];
-            br->pos += 1;
-            br->nbits = 8;
-        }
-
-        v = (v << 1) | (uint64_t)((br->acc >> (br->nbits - 1)) & 1);
-        br->nbits -= 1;
-    }
-
-    return v;
-}
-
-static void br_align_to_byte(BitReader *br) {
-    br->nbits = 0;
-}
-
-static const uint8_t *br_read_bytes_aligned(BitReader *br, const size_t n) {
-    br_align_to_byte(br);
-    const uint8_t *p = br->data + br->pos;
-    br->pos += n;
-
-    return p;
-}
-
-static uint64_t br_read_uvarint_aligned(BitReader *br) {
-    return uvarint_decode(br->data, &br->pos);
 }
 
 /* ============================================================
@@ -550,132 +204,6 @@ static int *huffman_lengths(const int64_t *freq, const int count) {
     return lengths;
 }
 
-typedef struct { uint32_t code; int length; } HCode;
-typedef struct { int sym; int length; } SortItem;
-
-static int sortitem_cmp(const void *a, const void *b) {
-    const SortItem *x = a, *y = b;
-
-    if(x->length != y->length) return x->length - y->length;
-    return x->sym - y->sym;
-}
-
-static HCode *canonical_codes(const int *lengths, const int count) {
-    HCode *codes = calloc(count, sizeof(HCode));
-    SortItem *items = malloc(sizeof(SortItem) * count);
-
-    for(int i = 0; i < count; i++) {
-        items[i].sym = i;
-        items[i].length = lengths[i];
-    }
-    qsort(items, count, sizeof(SortItem), sortitem_cmp);
-
-    uint32_t code = 0;
-    int prev = 0;
-    for(int i = 0; i < count; i++) {
-        const int s = items[i].sym, L = items[i].length;
-
-        if(L > prev) code <<= L - prev;
-
-        codes[s].code = code;
-        codes[s].length = L;
-        code += 1;
-
-        prev = L;
-    }
-
-    free(items);
-    return codes;
-}
-
-typedef struct {
-    uint64_t key;
-    int sym;
-    int used;
-} LookupEntry;
-
-typedef struct {
-    LookupEntry *entries;
-    size_t cap;
-    int max_len;
-} HLookup;
-
-static uint64_t lookup_hash(uint64_t key, const size_t cap) {
-    key ^= key >> 33;
-    key *= 0xff51afd7ed558ccdULL;
-    key ^= key >> 33;
-    key *= 0xc4ceb9fe1a85ec53ULL;
-    key ^= key >> 33;
-
-    return key % cap;
-}
-
-static void hlookup_insert(const HLookup *lk, const uint64_t key, const int sym) {
-    size_t idx = lookup_hash(key, lk->cap);
-
-    while(lk->entries[idx].used) idx = (idx + 1) % lk->cap;
-
-    lk->entries[idx].key = key;
-    lk->entries[idx].sym = sym;
-    lk->entries[idx].used = 1;
-}
-
-static int hlookup_find(const HLookup *lk, const uint64_t key, int *found) {
-    size_t idx = lookup_hash(key, lk->cap);
-    const size_t start = idx;
-
-    while(lk->entries[idx].used) {
-        if(lk->entries[idx].key == key) {
-            *found = 1;
-            return lk->entries[idx].sym;
-        }
-
-        idx = (idx + 1) % lk->cap;
-        if(idx == start) break;
-    }
-
-    *found = 0;
-    return -1;
-}
-
-static HLookup canonical_lookup(const int *lengths, const int count) {
-    HLookup lk;
-
-    lk.cap = (size_t)(count * 2 + 8);
-    lk.entries = (LookupEntry *)calloc(lk.cap, sizeof(LookupEntry));
-    lk.max_len = 0;
-
-    SortItem *items = malloc(sizeof(SortItem) * count);
-    for (int i = 0; i < count; i++) {
-        items[i].sym = i;
-        items[i].length = lengths[i];
-    }
-    qsort(items, count, sizeof(SortItem), sortitem_cmp);
-
-    uint32_t code = 0;
-    int prev = 0;
-    for(int i = 0; i < count; i++) {
-        const int s = items[i].sym, L = items[i].length;
-
-        if(L > prev) code <<= L - prev;
-
-        const uint64_t key = ((uint64_t)code << 6) | (uint64_t)L;
-        hlookup_insert(&lk, key, s);
-        code += 1;
-        prev = L;
-
-        if(L > lk.max_len) lk.max_len = L;
-    }
-
-    free(items);
-    return lk;
-}
-
-static void hlookup_free(HLookup *lk) {
-    free(lk->entries);
-    lk->entries = NULL;
-}
-
 static uint8_t *normalize_freqs(const int64_t *freq, const int n) {
     uint8_t *out = malloc(n > 0 ? n : 1);
     int64_t max_f = 1;
@@ -729,40 +257,9 @@ static int elias_length(const int64_t i) {
     return 2 * k + 1;
 }
 
-static void elias_write(BitWriter *bw, const int64_t i) {
-    const uint64_t n = (uint64_t)i + 1;
-    const int bl = elias_bitlen(n);
-    const int k = bl - 1;
-
-    bw_write_bits(bw, n, 2 * k + 1);
-}
-
-static int64_t elias_read(BitReader *br) {
-    int k = 0;
-
-    while(br_read_bits(br, 1) == 0) k++;
-
-    if(k == 0) return 0;
-
-    const uint64_t v = (1ULL << k) | br_read_bits(br, k);
-    return (int64_t)v - 1;
-}
-
 /* ============================================================
- * CODECS
+ * Codec length
  * ============================================================ */
-typedef struct {
-    int is_huffman;
-    int bits;
-    HLookup lookup;
-    int max_len;
-    int has_lookup;
-} Decoder;
-
-static void decoder_free(Decoder *d) {
-    if(d->has_lookup) hlookup_free(&d->lookup);
-}
-
 static int *uniform_lengths(const int count) {
     if(count == 0) return NULL;
 
@@ -817,7 +314,7 @@ static int *huffman_len_lengths(const int64_t *freq_raw, const int count) {
         int best_sym = -1;
         for(int i = 0; i < count; i++) {
             if(lengths[i] >= 15) continue;
-            
+
             if(best_sym < 0 || lengths[i] > lengths[best_sym] ||
                (lengths[i] == lengths[best_sym] && i > best_sym)) {
                 best_sym = i;
@@ -886,143 +383,6 @@ static int *codec_token_lengths(const int encoding, const int64_t *tok_freq_raw,
     return NULL;
 }
 
-static void codec_write_symbol(const int encoding, BitWriter *bw, const int sym_id, const HCode *codes, const int fixed_bits) {
-    switch(encoding) {
-        case ENC_FIXED:
-            bw_write_bits(bw, (uint64_t)sym_id, fixed_bits);
-            break;
-        case ENC_POSITIONAL:
-            elias_write(bw, sym_id);
-            break;
-        case ENC_HUFF_FREQ:
-        case ENC_HUFF_LEN:
-            bw_write_bits(bw, codes[sym_id].code, codes[sym_id].length);
-            break;
-    }
-}
-
-static int codec_read_symbol(const int encoding, BitReader *br, const Decoder *dec) {
-    switch(encoding) {
-        case ENC_FIXED:
-            return (int)br_read_bits(br, dec->bits);
-        case ENC_POSITIONAL:
-            return (int)elias_read(br);
-        case ENC_HUFF_FREQ:
-        case ENC_HUFF_LEN: {
-            uint64_t cur = 0;
-
-            for (int L = 1; L <= dec->max_len; L++) {
-                cur = (cur << 1) | br_read_bits(br, 1);
-                const uint64_t key = (cur << 6) | (uint64_t)L;
-                int found = 0;
-                const int sym = hlookup_find(&dec->lookup, key, &found);
-
-                if(found) return sym;
-            }
-
-            fprintf(stderr, "Error: invalid Huffman code\n");
-            exit(1);
-        }
-    }
-    return -1;
-}
-
-static HCode *codec_encode_codes_from_lengths(const int encoding, const int *lengths, const int count) {
-    switch(encoding) {
-        case ENC_FIXED:
-        case ENC_POSITIONAL:
-            return NULL;
-        case ENC_HUFF_FREQ:
-        case ENC_HUFF_LEN:
-            if(count == 0) return NULL;
-            return canonical_codes(lengths, count);
-    }
-
-    return NULL;
-}
-
-static Decoder codec_decoder_from_lengths(const int encoding, const int *lengths, const int count) {
-    Decoder d = {0};
-
-    switch(encoding) {
-        case ENC_FIXED:
-            d.bits = needed_bits(count);
-            break;
-        case ENC_POSITIONAL:
-            break;
-        case ENC_HUFF_FREQ:
-        case ENC_HUFF_LEN:
-            if(count > 0) {
-                d.lookup = canonical_lookup(lengths, count);
-                d.max_len = d.lookup.max_len;
-                d.has_lookup = 1;
-            }
-
-            break;
-    }
-
-    return d;
-}
-
-static void codec_write_overhead(const int encoding, BitWriter *bw, const int64_t *freq_raw, const int count) {
-    switch(encoding) {
-        case ENC_FIXED:
-        case ENC_POSITIONAL:
-            break;
-        case ENC_HUFF_FREQ: {
-            int64_t *full = malloc(sizeof(int64_t) * (count > 0 ? count : 1));
-            for(int i = 0; i < count; i++) full[i] = freq_raw[i] != 0 ? freq_raw[i] : 1;
-
-            uint8_t *norm = normalize_freqs(full, count);
-            bw_write_bytes_aligned(bw, norm, count);
-
-            free(full); free(norm);
-            break;
-        }
-        case ENC_HUFF_LEN: {
-            bw_flush_to_byte(bw);
-            int *lens = count > 0 ? huffman_len_lengths(freq_raw, count) : NULL;
-
-            for(int i = 0; i < count; i++) {
-                const int L = lens ? lens[i] : 1;
-                bw_write_bits(bw, (uint64_t)L, 4);
-            }
-            bw_flush_to_byte(bw);
-
-            free(lens);
-            break;
-        }
-    }
-}
-
-static int *codec_read_overhead(const int encoding, BitReader *br, const int count) {
-    switch(encoding) {
-        case ENC_FIXED:
-        case ENC_POSITIONAL:
-            return NULL;
-        case ENC_HUFF_FREQ: {
-            const uint8_t *freq_bytes = br_read_bytes_aligned(br, count);
-            int64_t *norm = malloc(sizeof(int64_t) * (count > 0 ? count : 1));
-
-            for(int i = 0; i < count; i++) norm[i] = freq_bytes[i];
-            int *lengths = huffman_lengths(norm, count);
-
-            free(norm);
-            return lengths;
-        }
-        case ENC_HUFF_LEN: {
-            br_align_to_byte(br);
-            int *lens = malloc(sizeof(int) * (count > 0 ? count : 1));
-
-            for(int i = 0; i < count; i++) lens[i] = (int)br_read_bits(br, 4);
-            br_align_to_byte(br);
-
-            return lens;
-        }
-    }
-    return NULL;
-}
-
 static int codec_overhead_bits(const int encoding, const int count) {
     switch(encoding) {
         case ENC_FIXED:
@@ -1041,265 +401,7 @@ static void compute_char_bit_lengths(const uint8_t *alphabet, const int A, const
     for(int i = 0; i < A; i++) byte_len_out[alphabet[i]] = char_lengths_by_id[i];
 }
 
-/* ============================================================
- * I/O strings
- * ============================================================ */
-typedef struct { uint8_t *data; size_t len; size_t cap; } ByteBuf;
-
-static void bytebuf_init(ByteBuf *b, const size_t cap) {
-    b->cap = cap > 0 ? cap : 64;
-    b->data = (uint8_t *)malloc(b->cap);
-    b->len = 0;
-}
-
-static void bytebuf_push(ByteBuf *b, const uint8_t c) {
-    if(b->len == b->cap) {
-        b->cap *= 2;
-        b->data = (uint8_t *)realloc(b->data, b->cap);
-    }
-
-    b->data[b->len++] = c;
-}
-
-static void utf8_encode_cp(const uint32_t cp, ByteBuf *out) {
-    if(cp <= 0x7F) {
-        bytebuf_push(out, (uint8_t)cp);
-    } else if(cp <= 0x7FF) {
-        bytebuf_push(out, (uint8_t)(0xC0 | (cp >> 6)));
-        bytebuf_push(out, (uint8_t)(0x80 | (cp & 0x3F)));
-    } else if(cp <= 0xFFFF) {
-        bytebuf_push(out, (uint8_t)(0xE0 | (cp >> 12)));
-        bytebuf_push(out, (uint8_t)(0x80 | ((cp >> 6) & 0x3F)));
-        bytebuf_push(out, (uint8_t)(0x80 | (cp & 0x3F)));
-    } else {
-        bytebuf_push(out, (uint8_t)(0xF0 | (cp >> 18)));
-        bytebuf_push(out, (uint8_t)(0x80 | ((cp >> 12) & 0x3F)));
-        bytebuf_push(out, (uint8_t)(0x80 | ((cp >> 6) & 0x3F)));
-        bytebuf_push(out, (uint8_t)(0x80 | (cp & 0x3F)));
-    }
-}
-
-static int hexval(const char c) {
-    if(c >= '0' && c <= '9') return c - '0';
-    if(c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if(c >= 'A' && c <= 'F') return c - 'A' + 10;
-
-    return -1;
-}
-
-static uint8_t *try_decode_python_string_literal(const char *line, const size_t linelen, size_t *outlen) {
-    if(linelen < 2) return NULL;
-
-    const char q = line[0];
-
-    if(q != '\'' && q != '"') return NULL;
-    if(line[linelen - 1] != q) return NULL;
-
-    ByteBuf out;
-    bytebuf_init(&out, linelen * 4 + 4);
-
-    size_t i = 1;
-    const size_t end = linelen - 1;
-
-    while(i < end) {
-        const char c = line[i];
-
-        if(c == q) {
-            free(out.data);
-            return NULL;
-        }
-
-        if(c == '\\') {
-            if(i + 1 >= end) {
-                free(out.data);
-                return NULL;
-            }
-
-            const char e = line[i + 1];
-            switch(e) {
-                case '\\': bytebuf_push(&out, '\\'); i += 2; break;
-                case '\'': bytebuf_push(&out, '\''); i += 2; break;
-                case '"':  bytebuf_push(&out, '"');  i += 2; break;
-                case 'n':  bytebuf_push(&out, '\n'); i += 2; break;
-                case 't':  bytebuf_push(&out, '\t'); i += 2; break;
-                case 'r':  bytebuf_push(&out, '\r'); i += 2; break;
-                case 'b':  bytebuf_push(&out, '\b'); i += 2; break;
-                case 'f':  bytebuf_push(&out, '\f'); i += 2; break;
-                case 'v':  bytebuf_push(&out, '\v'); i += 2; break;
-                case 'a':  bytebuf_push(&out, '\a'); i += 2; break;
-                case '0':  bytebuf_push(&out, '\0'); i += 2; break;
-                case '\n': i += 2; break;
-                case 'x': {
-                    if(i + 3 >= end + 1 && i + 4 > end) {
-                        free(out.data);
-                        return NULL;
-                    }
-
-                    if(i + 4 > end + 1) {
-                        free(out.data);
-                        return NULL;
-                    }
-
-                    const int h1 = hexval(line[i + 2]), h2 = hexval(line[i + 3]);
-                    if(h1 < 0 || h2 < 0) {
-                        free(out.data);
-                        return NULL;
-                    }
-
-                    utf8_encode_cp((uint32_t)(h1 * 16 + h2), &out);
-                    i += 4;
-
-                    break;
-                }
-                case 'u': {
-                    if(i + 6 > end + 1) { free(out.data); return NULL; }
-
-                    int h[4];
-                    for(int k = 0; k < 4; k++) {
-                        h[k] = hexval(line[i + 2 + k]);
-                        if(h[k] < 0) {
-                            free(out.data);
-                            return NULL;
-                        }
-                    }
-
-                    const uint32_t cp = (h[0] << 12) | (h[1] << 8) | (h[2] << 4) | h[3];
-                    utf8_encode_cp(cp, &out);
-                    i += 6;
-
-                    break;
-                }
-                case 'U': {
-                    if(i + 10 > end + 1) {
-                        free(out.data);
-                        return NULL;
-                    }
-
-                    uint32_t cp = 0;
-                    for(int k = 0; k < 8; k++) {
-                        const int hv = hexval(line[i + 2 + k]);
-                        if(hv < 0) {
-                            free(out.data);
-                            return NULL;
-                        }
-
-                        cp = (cp << 4) | (uint32_t)hv;
-                    }
-
-                    utf8_encode_cp(cp, &out);
-                    i += 10;
-
-                    break;
-                }
-                default:
-                    if(e >= '0' && e <= '7') {
-                        int val = 0, k = 0;
-                        size_t j = i + 1;
-
-                        while(k < 3 && j < end && line[j] >= '0' && line[j] <= '7') {
-                            val = val * 8 + (line[j] - '0');
-                            j++; k++;
-                        }
-
-                        bytebuf_push(&out, (uint8_t)(val & 0xFF));
-                        i = j;
-                    } else {
-                        bytebuf_push(&out, '\\');
-                        bytebuf_push(&out, (uint8_t)e);
-
-                        i += 2;
-                    }
-
-                    break;
-            }
-        } else {
-            bytebuf_push(&out, (uint8_t)c);
-            i += 1;
-        }
-    }
-
-    *outlen = out.len;
-    return out.data;
-}
-
 typedef struct { uint8_t *data; size_t len; } StrItem;
-
-static long my_getline(char **lineptr, size_t *n, FILE *stream) {
-    if(*lineptr == NULL || *n == 0) {
-        *n = 256;
-        *lineptr = (char *)malloc(*n);
-    }
-
-    size_t len = 0;
-    int c;
-
-    while((c = fgetc(stream)) != EOF) {
-        if(len + 1 >= *n) {
-            *n *= 2;
-            *lineptr = (char *)realloc(*lineptr, *n);
-        }
-
-        (*lineptr)[len++] = (char)c;
-
-        if(c == '\n') break;
-    }
-
-    if(len == 0 && c == EOF) return -1;
-
-    (*lineptr)[len] = '\0';
-    return len;
-}
-
-static StrItem *read_strings_text(const char *inputs_dir, const char *path, int *out_count) {
-    char full_path[4096];
-    snprintf(full_path, sizeof(full_path), "%s/%s", inputs_dir, path);
-
-    FILE *f = fopen(full_path, "r");
-    if(!f) {
-        fprintf(stderr, "Error: unable to open %s: %s\n", full_path, strerror(errno));
-        exit(1);
-    }
-
-    StrItem *items = NULL;
-    int cap = 0, n = 0;
-
-    char *line = NULL;
-    size_t linecap = 0;
-    long linelen;
-
-    while((linelen = my_getline(&line, &linecap, f)) != -1) {
-        while(linelen > 0 && (line[linelen - 1] == '\n' || line[linelen - 1] == '\r')) {
-            linelen--;
-        }
-        line[linelen] = '\0';
-
-        if(linelen == 0) continue;
-
-        if(n == cap) {
-            cap = cap ? cap * 2 : 64;
-            items = (StrItem *)realloc(items, sizeof(StrItem) * cap);
-        }
-
-        size_t declen = 0;
-        uint8_t *decoded = try_decode_python_string_literal(line, (size_t)linelen, &declen);
-        if(decoded) {
-            items[n].data = decoded;
-            items[n].len = declen;
-        } else {
-            items[n].data = (uint8_t *)malloc((size_t)linelen);
-            memcpy(items[n].data, line, (size_t)linelen);
-            items[n].len = (size_t)linelen;
-        }
-
-        n++;
-    }
-
-    free(line);
-    fclose(f);
-
-    *out_count = n;
-    return items;
-}
 
 /* ============================================================
  * Alphabet
@@ -1375,7 +477,7 @@ static void alphabet_char_freq_by_id(const Alphabet *alph, int64_t *out /* [A] *
 }
 
 /* ============================================================
- * Dictionary
+ * Sym / Seq / SeqList
  * ============================================================ */
 typedef struct { uint8_t type; int32_t val; } Sym;
 
@@ -1448,6 +550,9 @@ static SeqList initial_sequences(const StrItem *strs, const int n) {
     return sl;
 }
 
+/* ============================================================
+ * Dictionary
+ * ============================================================ */
 typedef struct { uint8_t *data; int len; } DictEntry;
 
 typedef struct { DictEntry *entries; int n; int cap; } Dictionary;
@@ -1487,6 +592,9 @@ static void dict_free(Dictionary *d) {
     d->entries = NULL; d->n = 0; d->cap = 0;
 }
 
+/* ============================================================
+ * Candidate map
+ * ============================================================ */
 typedef struct {
     uint8_t *key;
     int keylen;
@@ -1594,15 +702,141 @@ static void candmap_merge_from(CandMap *dst, const CandMap *src) {
     for(int i = 0; i < src->n; i++) candmap_incr(dst, src->entries[i].key, src->entries[i].keylen, src->entries[i].count);
 }
 
-static int seq_is_raw_run_and_get(const Seq *seq, const int i, uint8_t *out_byte) {
-    if(i < 0 || i >= seq->len) return 0;
-    if(seq->items[i].type != RAW) return 0;
+/* ============================================================
+ * Thread pool
+ * ============================================================ */
+typedef void (*PoolFn)(void *);
 
-    *out_byte = (uint8_t)seq->items[i].val;
+typedef struct ThreadPool ThreadPool;
 
-    return 1;
+typedef struct {
+    ThreadPool *pool;
+    int id;
+} PoolWorkerCtx;
+
+struct ThreadPool {
+    int nthreads;
+    pthread_t *threads;
+    PoolWorkerCtx *worker_ctx;
+
+    pthread_mutex_t mutex;
+    pthread_cond_t cond_work;
+    pthread_cond_t cond_done;
+
+    PoolFn fn;
+    void **args;
+    int ntasks;
+    int completed;
+    uint64_t round;
+    int shutdown;
+};
+
+static ThreadPool *g_pool = NULL;
+
+static void *pool_worker(void *argp) {
+    PoolWorkerCtx *ctx = (PoolWorkerCtx *)argp;
+    ThreadPool *p = ctx->pool;
+    uint64_t last_round = 0;
+
+    pthread_mutex_lock(&p->mutex);
+    for(;;) {
+        while(!p->shutdown && p->round == last_round) pthread_cond_wait(&p->cond_work, &p->mutex);
+
+        if(p->shutdown) {
+            pthread_mutex_unlock(&p->mutex);
+            return NULL;
+        }
+
+        last_round = p->round;
+
+        const int has_task = ctx->id < p->ntasks;
+        PoolFn fn = p->fn;
+        void *arg = has_task ? p->args[ctx->id] : NULL;
+
+        pthread_mutex_unlock(&p->mutex);
+
+        if(has_task) fn(arg);
+
+        pthread_mutex_lock(&p->mutex);
+        p->completed++;
+
+        if(p->completed == p->nthreads) pthread_cond_signal(&p->cond_done);
+    }
 }
 
+static void pool_init(ThreadPool *p, int nthreads) {
+    if(nthreads < 1) nthreads = 1;
+
+    p->nthreads = nthreads;
+    p->threads = malloc(sizeof(pthread_t) * nthreads);
+    p->worker_ctx = malloc(sizeof(PoolWorkerCtx) * nthreads);
+
+    pthread_mutex_init(&p->mutex, NULL);
+    pthread_cond_init(&p->cond_work, NULL);
+    pthread_cond_init(&p->cond_done, NULL);
+
+    p->fn = NULL;
+    p->args = NULL;
+    p->ntasks = 0;
+    p->completed = 0;
+    p->round = 0;
+    p->shutdown = 0;
+
+    if(nthreads > 1) {
+        for(int i = 0; i < nthreads; i++) {
+            p->worker_ctx[i].pool = p;
+            p->worker_ctx[i].id = i;
+
+            pthread_create(&p->threads[i], NULL, pool_worker, &p->worker_ctx[i]);
+        }
+    }
+}
+
+static void pool_shutdown(ThreadPool *p) {
+    if(p->nthreads > 1) {
+        pthread_mutex_lock(&p->mutex);
+        p->shutdown = 1;
+        pthread_cond_broadcast(&p->cond_work);
+        pthread_mutex_unlock(&p->mutex);
+
+        for(int i = 0; i < p->nthreads; i++) pthread_join(p->threads[i], NULL);
+    }
+
+    free(p->threads);
+    free(p->worker_ctx);
+
+    pthread_mutex_destroy(&p->mutex);
+    pthread_cond_destroy(&p->cond_work);
+    pthread_cond_destroy(&p->cond_done);
+
+    p->threads = NULL;
+    p->worker_ctx = NULL;
+}
+
+static void pool_run(ThreadPool *p, PoolFn fn, void **args, const int n) {
+    if(p->nthreads <= 1) {
+        for(int i = 0; i < n; i++) fn(args[i]);
+        return;
+    }
+
+    pthread_mutex_lock(&p->mutex);
+
+    p->fn = fn;
+    p->args = args;
+    p->ntasks = n;
+    p->completed = 0;
+    p->round++;
+
+    pthread_cond_broadcast(&p->cond_work);
+
+    while(p->completed < p->nthreads) pthread_cond_wait(&p->cond_done, &p->mutex);
+
+    pthread_mutex_unlock(&p->mutex);
+}
+
+/* ============================================================
+ * find_candidates
+ * ============================================================ */
 static void find_candidates_range(const SeqList *sl, const int seq_from, const int seq_to, const int min_len, const int max_len, CandMap *m) {
     uint8_t *acc = malloc((size_t)(max_len > 0 ? max_len : 1));
 
@@ -1636,13 +870,11 @@ typedef struct {
     CandMap local;
 } FindCandArg;
 
-static void *find_candidates_thread(void *arg) {
+static void find_candidates_task(void *arg) {
     FindCandArg *a = arg;
 
     candmap_init(&a->local, 256);
     find_candidates_range(a->sl, a->seq_from, a->seq_to, a->min_len, a->max_len, &a->local);
-
-    return NULL;
 }
 
 static CandMap find_candidates(const SeqList *sl, const int min_len, const int max_len) {
@@ -1652,12 +884,12 @@ static CandMap find_candidates(const SeqList *sl, const int min_len, const int m
     if(nthreads > sl->n) nthreads = sl->n > 0 ? sl->n : 1;
     if(nthreads < 1) nthreads = 1;
 
-    if(nthreads <= 1 || sl->n < 32) {
+    if(nthreads <= 1 || sl->n < 32 || !g_pool) {
         candmap_init(&full, 256);
         find_candidates_range(sl, 0, sl->n, min_len, max_len, &full);
     } else {
-        pthread_t threads[nthreads];
         FindCandArg args[nthreads];
+        void *argp[nthreads];
 
         const int base = sl->n / nthreads, rem = sl->n % nthreads;
         int start = 0;
@@ -1672,14 +904,13 @@ static CandMap find_candidates(const SeqList *sl, const int min_len, const int m
             args[t].max_len = max_len;
 
             start += cnt;
-            pthread_create(&threads[t], NULL, find_candidates_thread, &args[t]);
+            argp[t] = &args[t];
         }
 
+        pool_run(g_pool, find_candidates_task, argp, nthreads);
+
         candmap_init(&full, 256);
-
         for(int t = 0; t < nthreads; t++) {
-            pthread_join(threads[t], NULL);
-
             candmap_merge_from(&full, &args[t].local);
             candmap_free(&args[t].local);
         }
@@ -1696,6 +927,9 @@ static CandMap find_candidates(const SeqList *sl, const int min_len, const int m
     return filtered;
 }
 
+/* ============================================================
+ * Pattern matching / replacement over sequences
+ * ============================================================ */
 static int seq_matches_pattern_at(const Seq *seq, const int pos, const uint8_t *pat, const int m) {
     if(pos + m > seq->len) return 0;
 
@@ -1758,6 +992,9 @@ static SeqList replace_non_overlapping(const SeqList *sl, const uint8_t *pat, co
     return out;
 }
 
+/* ============================================================
+ * Scoring
+ * ============================================================ */
 static int64_t *count_tok_freqs(const SeqList *sl, const int D) {
     int64_t *out = calloc(D > 0 ? D : 1, sizeof(int64_t));
 
@@ -1856,7 +1093,7 @@ typedef struct {
     int fixed_token_bits_after;
 } ScoreArg;
 
-static void *score_candidates_thread(void *argp) {
+static void score_candidates_task(void *argp) {
     const ScoreArg *a = argp;
 
     for(int i = a->idx_from; i < a->idx_to; i++) {
@@ -1881,8 +1118,6 @@ static void *score_candidates_thread(void *argp) {
         a->out[i].gain = gain;
         a->out[i].valid = 1;
     }
-
-    return NULL;
 }
 
 static void score_candidates(const CandMap *cm, const SeqList *sl, const int64_t *tok_freqs_raw, const int D, const int encoding, const int *char_bit_len_by_byte, const int fixed_token_bits_after, CandScore *out) {
@@ -1892,15 +1127,16 @@ static void score_candidates(const CandMap *cm, const SeqList *sl, const int64_t
     if(nthreads > cm->n) nthreads = cm->n;
     if(nthreads < 1) nthreads = 1;
 
-    if(nthreads <= 1 || cm->n < 32) {
+    if(nthreads <= 1 || cm->n < 32 || !g_pool) {
         ScoreArg a = { .cm = cm, .sl = sl, .tok_freqs_raw = tok_freqs_raw, .D = D, .encoding = encoding, .char_bit_len_by_byte = char_bit_len_by_byte, .out = out, .idx_from = 0, .idx_to = cm->n, .fixed_token_bits_after = fixed_token_bits_after };
-        score_candidates_thread(&a);
+        score_candidates_task(&a);
 
         return;
     }
 
-    pthread_t threads[nthreads];
     ScoreArg args[nthreads];
+    void *argp[nthreads];
+
     const int base = cm->n / nthreads, rem = cm->n % nthreads;
     int start = 0;
 
@@ -1909,11 +1145,10 @@ static void score_candidates(const CandMap *cm, const SeqList *sl, const int64_t
 
         args[t] = (ScoreArg){ .cm = cm, .sl = sl, .tok_freqs_raw = tok_freqs_raw, .D = D, .encoding = encoding, .char_bit_len_by_byte = char_bit_len_by_byte, .out = out, .idx_from = start, .idx_to = start + cnt, .fixed_token_bits_after = fixed_token_bits_after };
         start += cnt;
-
-        pthread_create(&threads[t], NULL, score_candidates_thread, &args[t]);
+        argp[t] = &args[t];
     }
 
-    for(int t = 0; t < nthreads; t++) pthread_join(threads[t], NULL);
+    pool_run(g_pool, score_candidates_task, argp, nthreads);
 }
 
 /* ============================================================
@@ -2137,7 +1372,6 @@ typedef struct {
     int max_depth;
     int max_depth_is_none;
     MemoTable memo;
-    int64_t nodes, pruned_bb, memo_hits;
 } DfsCtx;
 
 typedef struct { int64_t bits; Dictionary dict; SeqList seqs; } DfsResult;
@@ -2168,14 +1402,11 @@ static int scoreditem_cmp_desc(const void *a, const void *b) {
 }
 
 static DfsResult dfs_run(DfsCtx *ctx, const Dictionary *dct, const SeqList *sqs, const int64_t current_bits, const int depth) {
-    ctx->nodes++;
-
     GrowBuf key;
     serialize_state_key(dct, sqs, depth, &key);
 
     const MemoEntry *hit = memo_find(&ctx->memo, key.data, key.len);
     if(hit) {
-        ctx->memo_hits++;
         DfsResult r;
         r.bits = hit->bits;
         r.dict = dict_clone(&hit->dict);
@@ -2221,8 +1452,6 @@ static DfsResult dfs_run(DfsCtx *ctx, const Dictionary *dct, const SeqList *sqs,
     const double ub_gain_bits = compute_ub_gain(ctx, &candidates, sqs);
 
     if((double)current_bits - ub_gain_bits >= (double)base_bits) {
-        ctx->pruned_bb++;
-
         candmap_free(&candidates);
         memo_insert(&ctx->memo, key.data, key.len, best_local.bits, &best_local.dict, &best_local.seqs);
         free(key.data);
@@ -2314,7 +1543,6 @@ static void exhaustive_build(const StrItem *strs, const int nstrs, const int *ch
     ctx.max_depth = max_depth; ctx.max_depth_is_none = max_depth_is_none;
 
     memo_init(&ctx.memo, 1024);
-    ctx.nodes = ctx.pruned_bb = ctx.memo_hits = 0;
 
     Dictionary empty_dict; dict_init(&empty_dict, 4);
     const int64_t init_bits = score_dictionary_bits(&empty_dict, &init_seqs, char_bit_len_by_byte, encoding);
@@ -2324,8 +1552,6 @@ static void exhaustive_build(const StrItem *strs, const int nstrs, const int *ch
     dict_free(&empty_dict);
     seqlist_free(&init_seqs);
     memo_free(&ctx.memo);
-
-    log_line("DFS: nodes = %lld, pruned = %lld, memo_hits = %lld", (long long)ctx.nodes, (long long)ctx.pruned_bb, (long long)ctx.memo_hits);
 
     *out_dict = result.dict;
     *out_seqs = result.seqs;
@@ -2386,365 +1612,222 @@ static void reorder_dict_for_positional(Dictionary *dict, SeqList *seqs, int64_t
 }
 
 /* ============================================================
- * Sections
+ * Canonical Huffman codes
  * ============================================================ */
-static void write_alphabet_section(BitWriter *bw, const Alphabet *alph, const int encoding) {
-    const int A = alph->A;
-    bw_write_uvarint_aligned(bw, (uint64_t)A);
-    bw_write_bytes_aligned(bw, alph->alphabet, (size_t)A);
+typedef struct { uint32_t code; int length; } HCode;
+typedef struct { int sym; int length; } SortItem;
 
-    int64_t char_freq_by_id[256];
-    alphabet_char_freq_by_id(alph, char_freq_by_id);
-    codec_write_overhead(encoding, bw, char_freq_by_id, A);
+static int sortitem_cmp(const void *a, const void *b) {
+    const SortItem *x = a, *y = b;
+
+    if(x->length != y->length) return x->length - y->length;
+    return x->sym - y->sym;
+}
+
+static HCode *canonical_codes(const int *lengths, const int count) {
+    HCode *codes = calloc(count, sizeof(HCode));
+    SortItem *items = malloc(sizeof(SortItem) * count);
+
+    for(int i = 0; i < count; i++) {
+        items[i].sym = i;
+        items[i].length = lengths[i];
+    }
+    qsort(items, count, sizeof(SortItem), sortitem_cmp);
+
+    uint32_t code = 0;
+    int prev = 0;
+    for(int i = 0; i < count; i++) {
+        const int s = items[i].sym, L = items[i].length;
+
+        if(L > prev) code <<= L - prev;
+
+        codes[s].code = code;
+        codes[s].length = L;
+        code += 1;
+
+        prev = L;
+    }
+
+    free(items);
+    return codes;
+}
+
+static HCode *codec_encode_codes_from_lengths(const int encoding, const int *lengths, const int count) {
+    switch(encoding) {
+        case ENC_FIXED:
+        case ENC_POSITIONAL:
+            return NULL;
+        case ENC_HUFF_FREQ:
+        case ENC_HUFF_LEN:
+            if(count == 0) return NULL;
+            return canonical_codes(lengths, count);
+    }
+
+    return NULL;
 }
 
 typedef struct {
-    uint8_t alphabet[256];
-    int A;
-    Decoder decoder;
-} ReadAlphabetResult;
+    char *buf;
+    size_t len;
+    size_t cap;
+} TextBitWriter;
 
-static ReadAlphabetResult read_alphabet_section(const uint8_t *data, size_t *pos, const int encoding) {
-    ReadAlphabetResult r = {0};
-    const uint64_t A64 = uvarint_decode(data, pos);
-    int A = (int)A64;
-
-    memcpy(r.alphabet, data + *pos, (size_t)A);
-    *pos += (size_t)A;
-
-    if(A == 0) {
-        r.alphabet[0] = 0;
-        A = 1;
-    }
-
-    BitReader br_tmp;
-    br_init(&br_tmp, data, SIZE_MAX, *pos);
-    int *lengths = codec_read_overhead(encoding, &br_tmp, A);
-    *pos = br_tmp.pos;
-
-    r.A = A;
-    r.decoder = codec_decoder_from_lengths(encoding, lengths, A);
-    free(lengths);
-
-    return r;
+static void tbw_init(TextBitWriter *w, size_t cap) {
+    w->cap = cap > 0 ? cap : 1024;
+    w->buf = (char *)malloc(w->cap);
+    w->len = 0;
 }
 
-static void write_dictionary_section(BitWriter *bw, const Dictionary *dict, const int *byte_to_id, const int64_t *tok_freqs_raw, const HCode *char_codes, const int char_bits, const int encoding) {
-    const int D = dict->n;
-    bw_write_uvarint_aligned(bw, (uint64_t)D);
+static void tbw_ensure(TextBitWriter *w, size_t extra) {
+    if(w->len + extra > w->cap) {
+        while(w->len + extra > w->cap) w->cap *= 2;
+        w->buf = (char *)realloc(w->buf, w->cap);
+    }
+}
 
-    for (int i = 0; i < D; i++) {
-        bw_write_uvarint_aligned(bw, (uint64_t)dict->entries[i].len);
+static void tbw_push_bits_msb(TextBitWriter *w, const uint64_t value, const int nbits) {
+    tbw_ensure(w, (size_t)nbits);
+
+    for(int i = nbits - 1; i >= 0; i--) w->buf[w->len++] = (char)(((value >> i) & 1ULL) ? '1' : '0');
+}
+
+static char *tbw_finish(TextBitWriter *w) {
+    tbw_ensure(w, 1);
+    w->buf[w->len] = '\0';
+
+    return w->buf;
+}
+
+static void ref_enc_write(TextBitWriter *w, const int64_t value) {
+    int length = 4;
+
+    for(;;) {
+        const int ones = (length == 4) ? 0 : length / 2;
+        const int width = (length == 4) ? 4 : length / 2;
+        const int64_t max_value = (1LL << width) - 1;
+        const int64_t base = exponential_ones_value(ones);
+        const int64_t cur_value = value - base;
+
+        if(cur_value < max_value) {
+            tbw_ensure(w, (size_t)(ones + width));
+
+            for(int i = 0; i < ones; i++) w->buf[w->len++] = '1';
+            for(int i = width - 1; i >= 0; i--) w->buf[w->len++] = (char)(((cur_value >> i) & 1) ? '1' : '0');
+
+            return;
+        }
+
+        length *= 2;
+    }
+}
+
+static void elias_write_ascii(TextBitWriter *w, const int64_t i) {
+    const uint64_t n = (uint64_t)i + 1;
+    const int bl = elias_bitlen(n);
+    const int k = bl - 1;
+
+    tbw_push_bits_msb(w, n, 2 * k + 1);
+}
+
+static void codec_write_symbol_ascii(const int encoding, TextBitWriter *w, const int sym_id, const HCode *codes, const int fixed_bits) {
+    switch(encoding) {
+        case ENC_FIXED:
+            tbw_push_bits_msb(w, (uint64_t)sym_id, fixed_bits);
+            break;
+        case ENC_POSITIONAL:
+            elias_write_ascii(w, sym_id);
+            break;
+        case ENC_HUFF_FREQ:
+        case ENC_HUFF_LEN:
+            tbw_push_bits_msb(w, codes[sym_id].code, codes[sym_id].length);
+            break;
+    }
+}
+
+static void codec_write_overhead_ascii(const int encoding, TextBitWriter *w, const int64_t *freq_raw, const int count) {
+    switch(encoding) {
+        case ENC_FIXED:
+        case ENC_POSITIONAL:
+            break;
+        case ENC_HUFF_FREQ: {
+            int64_t *full = malloc(sizeof(int64_t) * (count > 0 ? count : 1));
+            for(int i = 0; i < count; i++) full[i] = freq_raw[i] != 0 ? freq_raw[i] : 1;
+
+            uint8_t *norm = normalize_freqs(full, count);
+            for(int i = 0; i < count; i++) tbw_push_bits_msb(w, norm[i], 8);
+
+            free(full); free(norm);
+            break;
+        }
+        case ENC_HUFF_LEN: {
+            int *lens = count > 0 ? huffman_len_lengths(freq_raw, count) : NULL;
+
+            for(int i = 0; i < count; i++) tbw_push_bits_msb(w, (uint64_t)(lens ? lens[i] : 1), 4);
+
+            free(lens);
+            break;
+        }
+    }
+}
+
+static void write_dict_section_ascii(TextBitWriter *w, const Alphabet *alph, const Dictionary *dict, const int64_t *char_freq_by_id, const int64_t *tok_freqs, const HCode *char_codes, const int char_bits, const int encoding) {
+    const int A = alph->A;
+    ref_enc_write(w, A);
+
+    for(int i = 0; i < A; i++) tbw_push_bits_msb(w, alph->alphabet[i], 8);
+
+    codec_write_overhead_ascii(encoding, w, char_freq_by_id, A);
+
+    const int D = dict->n;
+    ref_enc_write(w, D);
+
+    for(int i = 0; i < D; i++) {
+        ref_enc_write(w, dict->entries[i].len);
 
         for(int k = 0; k < dict->entries[i].len; k++) {
             const uint8_t b = dict->entries[i].data[k];
-            codec_write_symbol(encoding, bw, byte_to_id[b], char_codes, char_bits);
+            codec_write_symbol_ascii(encoding, w, alph->byte_to_id[b], char_codes, char_bits);
         }
     }
 
-    codec_write_overhead(encoding, bw, tok_freqs_raw, D);
+    codec_write_overhead_ascii(encoding, w, tok_freqs, D);
 }
 
-static Dictionary read_dictionary_section(BitReader *br, const uint8_t *alphabet, const Decoder *char_decoder, const int encoding, const int num_entries, Decoder *out_tok_decoder) {
-    Dictionary dict; dict_init(&dict, num_entries > 0 ? num_entries : 4);
+static char *write_seq_ascii(const Seq *seq, const int *byte_to_id, const HCode *char_codes, const int char_bits, const HCode *tok_codes, const int token_bits, const int encoding, int32_t *out_len) {
+    TextBitWriter w;
+    tbw_init(&w, (size_t)seq->len * 4 + 16);
 
-    uint8_t tmpbuf[4096];
-    for(int e = 0; e < num_entries; e++) {
-        br_align_to_byte(br);
-        const uint64_t L = br_read_uvarint_aligned(br);
+    ref_enc_write(&w, seq->len);
 
-        uint8_t *entry = L <= sizeof(tmpbuf) ? tmpbuf : malloc(L);
-        for(uint64_t k = 0; k < L; k++) {
-            const int cid = codec_read_symbol(encoding, br, char_decoder);
-            entry[k] = alphabet[cid];
-        }
-
-        dict_push(&dict, entry, (int)L);
-
-        if(entry != tmpbuf) free(entry);
-    }
-
-    br_align_to_byte(br);
-    int *lengths = codec_read_overhead(encoding, br, num_entries);
-    *out_tok_decoder = codec_decoder_from_lengths(encoding, lengths, num_entries);
-    free(lengths);
-
-    return dict;
-}
-
-static void write_stream(BitWriter *bw, const SeqList *seqs, const int *byte_to_id, const HCode *char_codes, const int char_bits, const HCode *tok_codes, const int token_bits, const int encoding) {
-    bw_write_uvarint_aligned(bw, (uint64_t)seqs->n);
-
-    for(int i = 0; i < seqs->n; i++) {
-        const Seq *seq = &seqs->seqs[i];
-        bw_write_uvarint_aligned(bw, (uint64_t)seq->len);
-
-        for(int k = 0; k < seq->len; k++) {
-            if(seq->items[k].type == RAW) {
-                bw_write_bits(bw, 0, 1);
-                codec_write_symbol(encoding, bw, byte_to_id[(uint8_t)seq->items[k].val], char_codes, char_bits);
-            } else {
-                bw_write_bits(bw, 1, 1);
-                codec_write_symbol(encoding, bw, seq->items[k].val, tok_codes, token_bits);
-            }
+    for(int k = 0; k < seq->len; k++) {
+        if(seq->items[k].type == RAW) {
+            tbw_push_bits_msb(&w, 0, 1);
+            codec_write_symbol_ascii(encoding, &w, byte_to_id[(uint8_t)seq->items[k].val], char_codes, char_bits);
+        } else {
+            tbw_push_bits_msb(&w, 1, 1);
+            codec_write_symbol_ascii(encoding, &w, seq->items[k].val, tok_codes, token_bits);
         }
     }
+
+    *out_len = (int32_t)w.len;
+    return tbw_finish(&w);
 }
-
-static StrItem *read_stream(BitReader *br, const uint8_t *alphabet, const Dictionary *dict, const int encoding, const Decoder *char_decoder, const Decoder *tok_decoder, int *out_n) {
-    br_align_to_byte(br);
-    const uint64_t N = br_read_uvarint_aligned(br);
-
-    StrItem *out = malloc(sizeof(StrItem) * (N > 0 ? N : 1));
-
-    for(uint64_t i = 0; i < N; i++) {
-        br_align_to_byte(br);
-        const uint64_t S = br_read_uvarint_aligned(br);
-
-        ByteBuf buf; bytebuf_init(&buf, (S > 0 ? S : 1) * 4 + 16);
-
-        for(uint64_t k = 0; k < S; k++) {
-            const uint64_t flag = br_read_bits(br, 1);
-
-            if(flag == 0) {
-                const int cid = codec_read_symbol(encoding, br, char_decoder);
-                bytebuf_push(&buf, alphabet[cid]);
-            } else {
-                const int tid = codec_read_symbol(encoding, br, tok_decoder);
-                const DictEntry *de = &dict->entries[tid];
-
-                for(int b = 0; b < de->len; b++) bytebuf_push(&buf, de->data[b]);
-            }
-        }
-
-        out[i].data = buf.data;
-        out[i].len = buf.len;
-    }
-
-    *out_n = (int)N;
-    return out;
-}
-
-/* ============================================================
- * Encode / Decode
- * ============================================================ */
-static double now_seconds(void) {
-#ifdef _WIN32
-    static LARGE_INTEGER freq;
-    static int freq_init = 0;
-
-    if(!freq_init) {
-        QueryPerformanceFrequency(&freq);
-        freq_init = 1;
-    }
-
-    LARGE_INTEGER counter;
-    QueryPerformanceCounter(&counter);
-
-    return (double)counter.QuadPart / (double)freq.QuadPart;
-#else
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
-#endif
-}
-
-static void encode_onefile(const char *project_root, const char *input_txt, const char *output_bin, const int min_len, const int max_len, const int max_dict, const int exh_max_depth, const int encoding) {
-    const double t_start = now_seconds();
-
-    char inputs_dir[4096];
-    snprintf(inputs_dir, sizeof(inputs_dir), "%s/inputs", project_root);
-
-    int nstrs = 0;
-    StrItem *strs = read_strings_text(inputs_dir, input_txt, &nstrs);
-
-    const int sort_by_freq = (encoding == ENC_POSITIONAL);
-    Alphabet alph;
-    build_alphabet(strs, nstrs, sort_by_freq, &alph);
-
-    int64_t char_freq_by_id[256];
-    alphabet_char_freq_by_id(&alph, char_freq_by_id);
-
-    int *char_lengths_by_id0 = codec_char_lengths(encoding, alph.A, char_freq_by_id);
-    int char_bit_len_by_byte[256] = {0};
-    compute_char_bit_lengths(alph.alphabet, alph.A, char_lengths_by_id0, char_bit_len_by_byte);
-    free(char_lengths_by_id0);
-
-    const int max_depth_is_none = (exh_max_depth < 0);
-    const int max_depth = max_depth_is_none ? 0 : exh_max_depth;
-
-    Dictionary dictionary; SeqList seqs;
-    exhaustive_build(strs, nstrs, char_bit_len_by_byte, encoding, min_len, max_len, max_dict, max_depth, max_depth_is_none, &dictionary, &seqs);
-
-    const int D = dictionary.n;
-    const int token_bits = needed_bits(D);
-
-    int64_t *tok_freqs;
-    if(encoding == ENC_POSITIONAL) reorder_dict_for_positional(&dictionary, &seqs, &tok_freqs);
-    else tok_freqs = count_tok_freqs(&seqs, D);
-
-    int *char_lengths_by_id = codec_char_lengths(encoding, alph.A, char_freq_by_id);
-    HCode *char_codes = codec_encode_codes_from_lengths(encoding, char_lengths_by_id, alph.A);
-
-    int *tok_lengths_by_id = codec_token_lengths(encoding, tok_freqs, D);
-    HCode *tok_codes = codec_encode_codes_from_lengths(encoding, tok_lengths_by_id, D);
-
-    BitWriter bw;
-    bw_init(&bw);
-    bw_write_bytes_aligned(&bw, MAGIC, 4);
-    const uint8_t verenc[2] = { (uint8_t)VERSION, (uint8_t)encoding };
-    bw_write_bytes_aligned(&bw, verenc, 2);
-
-    write_alphabet_section(&bw, &alph, encoding);
-    write_dictionary_section(&bw, &dictionary, alph.byte_to_id, tok_freqs, char_codes, alph.char_bits, encoding);
-    write_stream(&bw, &seqs, alph.byte_to_id, char_codes, alph.char_bits, tok_codes, token_bits, encoding);
-
-    size_t datalen;
-    uint8_t *data = bw_getvalue(&bw, &datalen);
-
-    char output_dir[4096];
-    snprintf(output_dir, sizeof(output_dir), "%s/outputs", project_root);
-    mkdirs(output_dir);
-
-    char full_output_path[4096];
-    snprintf(full_output_path, sizeof(full_output_path), "%s/%s", output_dir, output_bin);
-
-    FILE *f = fopen(full_output_path, "wb");
-    if(!f) {
-        fprintf(stderr, "Error: unable to write %s: %s\n", full_output_path, strerror(errno));
-        exit(1);
-    }
-
-    fwrite(data, 1, datalen, f);
-    fclose(f);
-
-    int64_t orig_bytes = 0;
-    for(int i = 0; i < nstrs; i++) orig_bytes += (int64_t)strs[i].len;
-    int64_t dict_bytes = 0;
-    for(int i = 0; i < dictionary.n; i++) dict_bytes += dictionary.entries[i].len;
-
-    const double t_elapsed = now_seconds() - t_start;
-
-    log_line("OK: scritto %s", output_bin);
-    log_line("Stringhe: %d", nstrs);
-    log_line("Originale (UTF-8 bytes): %lld", (long long)orig_bytes);
-    log_line("Alfabeto A = %d => char_bits = %d", alph.A, alph.char_bits);
-    log_line("Dizionario D = %d => token_bits = %d, bytes_dizionario_raw = %lld", D, token_bits, (long long)dict_bytes);
-    log_line("Output totale (bytes): %zu", datalen);
-    log_line("Tempo: %.2f s", t_elapsed);
-
-    free(data);
-    free(char_lengths_by_id);
-    free(char_codes);
-    free(tok_lengths_by_id);
-    free(tok_codes);
-    free(tok_freqs);
-
-    dict_free(&dictionary);
-    seqlist_free(&seqs);
-    for(int i = 0; i < nstrs; i++) free(strs[i].data);
-
-    free(strs);
-}
-
-static StrItem *decompress_onefile(const char *project_root, const char *path_bin, int *out_n) {
-    char output_dir[4096];
-    snprintf(output_dir, sizeof(output_dir), "%s/outputs", project_root);
-
-    char full_path[4096];
-    snprintf(full_path, sizeof(full_path), "%s/%s", output_dir, path_bin);
-
-    FILE *f = fopen(full_path, "rb");
-    if(!f) {
-        fprintf(stderr, "Error: unable to open %s: %s\n", full_path, strerror(errno));
-        exit(1);
-    }
-
-    fseek(f, 0, SEEK_END);
-    const long fsize = ftell(f);
-
-    fseek(f, 0, SEEK_SET);
-    uint8_t *data = malloc((size_t)fsize);
-
-    if(fread(data, 1, (size_t)fsize, f) != (size_t)fsize) {
-        fprintf(stderr, "Error: unable to open %s\n", full_path);
-        exit(1);
-    }
-
-    fclose(f);
-
-    size_t pos = 0;
-    if(fsize < 4 || memcmp(data, MAGIC, 4) != 0) {
-        fprintf(stderr, "Error: invalid MAGIC\n");
-        exit(1);
-    }
-
-    pos += 4;
-    const int ver = data[pos]; pos += 1;
-    const int encoding = data[pos]; pos += 1;
-
-    if(ver != VERSION) {
-        fprintf(stderr, "Error: unsupported version: %d\n", ver);
-        exit(1);
-    }
-
-    ReadAlphabetResult ar = read_alphabet_section(data, &pos, encoding);
-
-    const uint64_t D = uvarint_decode(data, &pos);
-
-    BitReader br;
-    br_init(&br, data, (size_t)fsize, pos);
-
-    Decoder tok_decoder;
-    Dictionary dictionary = read_dictionary_section(&br, ar.alphabet, &ar.decoder, encoding, (int)D, &tok_decoder);
-
-    int n;
-    StrItem *result = read_stream(&br, ar.alphabet, &dictionary, encoding, &ar.decoder, &tok_decoder, &n);
-
-    decoder_free(&ar.decoder);
-    decoder_free(&tok_decoder);
-    dict_free(&dictionary);
-    free(data);
-
-    *out_n = n;
-    return result;
-}
-
-/* ============================================================
- * Library API (for ctypes binding from Python)
- *
- * Wraps the dictionary-building phase only (alphabet + greedy/DFS
- * search): the expensive O(candidates^2)-ish part. Bit-level
- * serialization stays in Python's compression.py, which remains the
- * single source of truth for the exact QRtree bitstream layout.
- * ============================================================ */
-typedef struct { uint8_t *data; int32_t len; } QBuf;
-typedef struct { uint8_t type; int32_t val; } QSym;
-typedef struct { QSym *items; int32_t len; } QSeq;
 
 typedef struct {
-    uint8_t alphabet[256];
-    int32_t A;
-    int32_t byte_to_id[256];  /* -1 if the byte is unused */
+    char *dict_bits;
+    int32_t dict_bits_len;
 
-    QBuf *dict_entries;
-    int32_t dict_count;
+    char **stream_bits;
+    int32_t *stream_bits_len;
+    int32_t n_strings;
+} QRTreeCompressResult;
 
-    QSeq *seqs;
-    int32_t seqs_count;
-} QRTreeBuildResult;
-
-/*
- * strings/string_lens: n_strings byte buffers (not necessarily
- * NUL-terminated -- lengths are explicit) with the program's literal
- * strings, in order. encoding: 0=fixed,1=huffman-freq,2=huffman-len,
- * 3=positional. exh_max_depth: 0=greedy, -1=unlimited DFS, N=depth N.
- * nthreads<=0 keeps the current setting.
- */
-QRTreeBuildResult *qrtree_build(const uint8_t **strings, const int32_t *string_lens, const int32_t n_strings,
-                                 const int32_t encoding, const int32_t min_len, const int32_t max_len,
-                                 const int32_t max_dict, const int32_t exh_max_depth, const int32_t nthreads) {
+QRTreeCompressResult *qrtree_compress_program(const uint8_t **strings, const int32_t *string_lens, const int32_t n_strings, const int32_t encoding, const int32_t min_len, const int32_t max_len, const int32_t max_dict, const int32_t exh_max_depth, const int32_t nthreads) {
     if(nthreads > 0) g_nthreads = nthreads;
+
+    ThreadPool pool;
+    pool_init(&pool, g_nthreads);
+    g_pool = &pool;
 
     StrItem *strs = (StrItem *)malloc(sizeof(StrItem) * (n_strings > 0 ? n_strings : 1));
     for(int i = 0; i < n_strings; i++) {
@@ -2759,210 +1842,67 @@ QRTreeBuildResult *qrtree_build(const uint8_t **strings, const int32_t *string_l
     int64_t char_freq_by_id[256];
     alphabet_char_freq_by_id(&alph, char_freq_by_id);
 
-    int *char_lengths_by_id0 = codec_char_lengths(encoding, alph.A, char_freq_by_id);
+    int *char_lengths_by_id = codec_char_lengths(encoding, alph.A, char_freq_by_id);
     int char_bit_len_by_byte[256] = {0};
-    compute_char_bit_lengths(alph.alphabet, alph.A, char_lengths_by_id0, char_bit_len_by_byte);
-    free(char_lengths_by_id0);
+    compute_char_bit_lengths(alph.alphabet, alph.A, char_lengths_by_id, char_bit_len_by_byte);
 
     const int max_depth_is_none = (exh_max_depth < 0);
     const int max_depth = max_depth_is_none ? 0 : exh_max_depth;
 
     Dictionary dictionary; SeqList seqs;
-    exhaustive_build(strs, n_strings, char_bit_len_by_byte, encoding, min_len, max_len, max_dict,
-                      max_depth, max_depth_is_none, &dictionary, &seqs);
+    exhaustive_build(strs, n_strings, char_bit_len_by_byte, encoding, min_len, max_len, max_dict, max_depth, max_depth_is_none, &dictionary, &seqs);
 
-    if(encoding == ENC_POSITIONAL) {
-        int64_t *tok_freqs_tmp;
-        reorder_dict_for_positional(&dictionary, &seqs, &tok_freqs_tmp);
-        free(tok_freqs_tmp);
-    }
+    int64_t *tok_freqs;
+    if(encoding == ENC_POSITIONAL) reorder_dict_for_positional(&dictionary, &seqs, &tok_freqs);
+    else tok_freqs = count_tok_freqs(&seqs, dictionary.n);
 
-    QRTreeBuildResult *out = (QRTreeBuildResult *)malloc(sizeof(QRTreeBuildResult));
-    memcpy(out->alphabet, alph.alphabet, 256);
-    out->A = alph.A;
-    for(int i = 0; i < 256; i++) out->byte_to_id[i] = alph.byte_to_id[i];
+    HCode *char_codes = codec_encode_codes_from_lengths(encoding, char_lengths_by_id, alph.A);
 
-    out->dict_count = dictionary.n;
-    out->dict_entries = (QBuf *)malloc(sizeof(QBuf) * (dictionary.n > 0 ? dictionary.n : 1));
-    for(int i = 0; i < dictionary.n; i++) {
-        out->dict_entries[i].len = dictionary.entries[i].len;
-        out->dict_entries[i].data = (uint8_t *)malloc((size_t)dictionary.entries[i].len);
-        memcpy(out->dict_entries[i].data, dictionary.entries[i].data, (size_t)dictionary.entries[i].len);
-    }
+    int *tok_lengths_by_id = codec_token_lengths(encoding, tok_freqs, dictionary.n);
+    HCode *tok_codes = codec_encode_codes_from_lengths(encoding, tok_lengths_by_id, dictionary.n);
 
-    out->seqs_count = seqs.n;
-    out->seqs = (QSeq *)malloc(sizeof(QSeq) * (seqs.n > 0 ? seqs.n : 1));
+    const int token_bits = needed_bits(dictionary.n);
+
+    TextBitWriter dict_w;
+    tbw_init(&dict_w, 4096);
+    write_dict_section_ascii(&dict_w, &alph, &dictionary, char_freq_by_id, tok_freqs, char_codes, alph.char_bits, encoding);
+
+    QRTreeCompressResult *out = (QRTreeCompressResult *)malloc(sizeof(QRTreeCompressResult));
+    out->dict_bits = tbw_finish(&dict_w);
+    out->dict_bits_len = (int32_t)dict_w.len;
+
+    out->n_strings = seqs.n;
+    out->stream_bits = (char **)malloc(sizeof(char *) * (seqs.n > 0 ? seqs.n : 1));
+    out->stream_bits_len = (int32_t *)malloc(sizeof(int32_t) * (seqs.n > 0 ? seqs.n : 1));
+
     for(int i = 0; i < seqs.n; i++) {
-        out->seqs[i].len = seqs.seqs[i].len;
-        out->seqs[i].items = (QSym *)malloc(sizeof(QSym) * (size_t)(seqs.seqs[i].len > 0 ? seqs.seqs[i].len : 1));
-        for(int k = 0; k < seqs.seqs[i].len; k++) {
-            out->seqs[i].items[k].type = seqs.seqs[i].items[k].type;
-            out->seqs[i].items[k].val = seqs.seqs[i].items[k].val;
-        }
+        out->stream_bits[i] = write_seq_ascii(&seqs.seqs[i], alph.byte_to_id, char_codes, alph.char_bits, tok_codes, token_bits, encoding, &out->stream_bits_len[i]);
     }
+
+    free(char_lengths_by_id);
+    free(char_codes);
+    free(tok_lengths_by_id);
+    free(tok_codes);
+    free(tok_freqs);
 
     dict_free(&dictionary);
     seqlist_free(&seqs);
     free(strs);
 
+    g_pool = NULL;
+    pool_shutdown(&pool);
+
     return out;
 }
 
-void qrtree_free_result(QRTreeBuildResult *r) {
+void qrtree_compress_program_free(QRTreeCompressResult *r) {
     if(!r) return;
 
-    for(int i = 0; i < r->dict_count; i++) free(r->dict_entries[i].data);
-    free(r->dict_entries);
+    free(r->dict_bits);
 
-    for(int i = 0; i < r->seqs_count; i++) free(r->seqs[i].items);
-    free(r->seqs);
+    for(int i = 0; i < r->n_strings; i++) free(r->stream_bits[i]);
+    free(r->stream_bits);
+    free(r->stream_bits_len);
 
     free(r);
-}
-
-/* ============================================================
- * CLI
- * ============================================================ */
-static int encoding_from_name(const char *name) {
-    if(strcmp(name, "fixed") == 0) return ENC_FIXED;
-    if(strcmp(name, "huffman-freq") == 0) return ENC_HUFF_FREQ;
-    if(strcmp(name, "huffman-len") == 0) return ENC_HUFF_LEN;
-    if(strcmp(name, "positional") == 0) return ENC_POSITIONAL;
-
-    return -1;
-}
-
-static int detect_nthreads(void) {
-    long n;
-#ifdef _WIN32
-    SYSTEM_INFO si;
-    GetSystemInfo(&si);
-    n = (long)si.dwNumberOfProcessors;
-#else
-    n = sysconf(_SC_NPROCESSORS_ONLN);
-#endif
-    if(n < 1) n = 1;
-    if(n > 64) n = 64;
-
-    return (int)n;
-}
-
-int main(const int argc, char **argv) {
-    const char *mode = NULL;
-    const char *input = NULL;
-    const char *output = NULL;
-    int min_len = 2, max_len = 32, max_dict = 1023, exh_max_depth = 0;
-    const char *encoding_name = "fixed";
-
-    const char *positionals[3];
-    int npos = 0;
-
-    for(int i = 1; i < argc; i++) {
-        const char *a = argv[i];
-
-        if(strcmp(a, "--min-len") == 0 && i + 1 < argc) {
-            min_len = atoi(argv[++i]);
-        } else if(strcmp(a, "--max-len") == 0 && i + 1 < argc) {
-            max_len = atoi(argv[++i]);
-        } else if(strcmp(a, "--max-dict") == 0 && i + 1 < argc) {
-            max_dict = atoi(argv[++i]);
-        } else if(strcmp(a, "--exh-max-depth") == 0 && i + 1 < argc) {
-            exh_max_depth = atoi(argv[++i]);
-        } else if(strcmp(a, "--encoding") == 0 && i + 1 < argc) {
-            encoding_name = argv[++i];
-        } else if(a[0] == '-' && strlen(a) > 1 && !(a[1] >= '0' && a[1] <= '9')) {
-            fprintf(stderr, "%s: unknown option: %s\n", argv[0], a);
-            return 2;
-        } else {
-            if(npos < 3) positionals[npos++] = a;
-        }
-    }
-
-    if(npos < 2) {
-        return 2;
-    }
-
-    mode = positionals[0];
-    input = positionals[1];
-    if(npos >= 3) output = positionals[2];
-
-    if(strcmp(mode, "compress") != 0 && strcmp(mode, "decompress") != 0) {
-        fprintf(stderr, "%s: invalid mode: %s (choose between 'compress', 'decompress')\n", argv[0], mode);
-        return 2;
-    }
-
-    const int encoding = encoding_from_name(encoding_name);
-    if(encoding < 0) {
-        fprintf(stderr, "%s: --encoding invalid: %s\n", argv[0], encoding_name);
-        return 2;
-    }
-
-    g_nthreads = detect_nthreads();
-    setup_logger(input);
-
-    char project_root[4096];
-    get_project_root(project_root, sizeof(project_root));
-
-    if(strcmp(mode, "compress") == 0) {
-        char out_buf[4096];
-        const char *out;
-
-        if(output) {
-            out = output;
-        } else {
-            char base[4096];
-            snprintf(base, sizeof(base), "%s", input);
-            char *dot = strchr(base, '.');
-
-            if(dot) *dot = '\0';
-
-            snprintf(out_buf, sizeof(out_buf), "c2_exhaustive_c_%s_compressed.bin", base);
-            out = out_buf;
-        }
-
-        encode_onefile(project_root, input, out, min_len, max_len, max_dict, exh_max_depth, encoding);
-    } else {
-        int n;
-        StrItem *strs = decompress_onefile(project_root, input, &n);
-
-        if(output) {
-            char output_dir[4096];
-            snprintf(output_dir, sizeof(output_dir), "%s/outputs", project_root);
-            mkdirs(output_dir);
-
-            char full_out[4096];
-            snprintf(full_out, sizeof(full_out), "%s/%s", output_dir, output);
-
-            FILE *f = fopen(full_out, "w");
-            if(!f) {
-                fprintf(stderr, "Error: unable to write %s: %s\n", full_out, strerror(errno));
-                return 1;
-            }
-
-            for(int i = 0; i < n; i++) {
-                fwrite(strs[i].data, 1, strs[i].len, f);
-                fputc('\n', f);
-            }
-
-            fclose(f);
-
-            log_line("OK: scritto %s", output);
-        } else {
-            for(int i = 0; i < n; i++) {
-                char *tmp = malloc(strs[i].len + 1);
-                memcpy(tmp, strs[i].data, strs[i].len);
-                tmp[strs[i].len] = '\0';
-
-                log_line("%s", tmp);
-
-                free(tmp);
-            }
-        }
-
-        for(int i = 0; i < n; i++) free(strs[i].data);
-        free(strs);
-    }
-
-    if(g_logfile) fclose(g_logfile);
-    return 0;
 }
