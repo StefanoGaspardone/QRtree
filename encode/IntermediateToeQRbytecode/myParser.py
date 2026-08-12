@@ -3,11 +3,6 @@ from .compression import compress_program_strings
 import ply.yacc as yacc
 import struct
 import re
-import os
-import datetime
-
-_HERE = os.path.dirname(os.path.abspath(__file__))
-DICTIONARIES_DIR = os.path.normpath(os.path.join(_HERE, "..", "..", "dictionaries"))
 
 class Parser:
 
@@ -18,55 +13,24 @@ class Parser:
         self.compressed = None
         self.compressed_idx = 0
 
-
     # Collect all quoted string literals from the .qr source, in order
     def _extract_program_strings(self, source_text):
         return re.findall(r'"([^"]*)"', source_text)
 
-    # Assigns the next progressive id for the external dictionary file
-    def _next_dict_id(self):
-        os.makedirs(DICTIONARIES_DIR, exist_ok = True)
-        counter_path = os.path.join(DICTIONARIES_DIR, "counter.txt")
-
-        next_id = 0
-        if os.path.exists(counter_path):
-            with open(counter_path, "r") as f:
-                next_id = int(f.read().strip())
-
-        with open(counter_path, "w") as f:
-            f.write(str(next_id + 1))
-
-        return next_id
-
-    # Compress program strings
-    def encode(self, source_text, min_len = 2, max_len = 32, max_dict = 1023):
+    # Compress program strings using the hybrid pipeline
+    def encode(self, source_text, language = "en", min_len = 2, max_len = 32, max_dict = 1023):
         strings = self._extract_program_strings(source_text)
 
-        result = compress_program_strings(strings, min_len = min_len, max_len = max_len, max_dict = max_dict)
+        result = compress_program_strings(strings, language = language, min_len = min_len, max_len = max_len, max_dict = max_dict)
         self.compressed = result
         self.compressed_idx = 0
 
-        dict_id = self._next_dict_id()
-        self._write_manifest_entry(dict_id)
-        
-        with open(os.path.join(DICTIONARIES_DIR, f"{dict_id}.bin"), "w") as dict_file:
-            dict_file.write(result['dict_bits'])
-
         self.output = open(f"{self.fileName}.bin", "w")
-        self.output.write("100" + self.referenceEncoding(dict_id))
+        self.output.write("10" + result['dict_bits'])
 
         self.parser.parse(source_text)
-        
-    # For debugging stuff
-    def _write_manifest_entry(self, dict_id):
-        manifest_path = os.path.join(DICTIONARIES_DIR, "manifest.txt")
-        timestamp = datetime.datetime.now().isoformat(timespec = "seconds")
- 
-        with open(manifest_path, "a") as f:
-            f.write(f"{dict_id}\t{self.fileName}\t{timestamp}\n")
 
-
-    # Return the pre-computed (fully C-serialized) compressed bitstring
+    # Return the pre-computed (fully C-serialized) compressed bitstring for the next string, in source order
     def stringEncoding(self, string):
         bits = self.compressed['stream_bits'][self.compressed_idx]
         self.compressed_idx += 1
@@ -109,7 +73,6 @@ class Parser:
         return bin(n)[2:].zfill(bits)
 
     tokens = Scanner.tokens
-
 
     # A program is a list of operations (instructions from the definition of the QRtree dialect)
     def p_prog(self,p):
