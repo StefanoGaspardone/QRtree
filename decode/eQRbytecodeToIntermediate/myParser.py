@@ -55,10 +55,10 @@ class Parser:
 
     tokens = Scanner.tokens
 
-    # A program is a list of the encodings of the instruction of QRtree
+    # A program is a list of the encodings of the instruction of QRtree.
     def p_prog(self,p):
         '''
-        prog : DICT_HEADER op_list
+        prog : DICT_SPEC_HEADER op_list
         '''
         self.output.close()
 

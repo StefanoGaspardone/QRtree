@@ -1,6 +1,10 @@
+import os
 import ply.lex as lex
 from ply.lex import TOKEN
-from .decompression import read_dict, read_compressed_string
+from .decompression import exp_read, read_dict, read_compressed_string
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+DICTIONARIES_DIR = os.path.normpath(os.path.join(_HERE, "..", "..", "dictionaries"))
 
 class Scanner:
 
@@ -8,7 +12,7 @@ class Scanner:
         self.lexer = lex.lex(module=self, debug=debug)
 
     tokens = [
-        'DICT_HEADER', 'ZERO', 'ONE', 'BYTE', 'NUMBER', 'REF4', 'REF8', 'REF16', 'REF32',
+        'DICT_SPEC_HEADER', 'ZERO', 'ONE', 'BYTE', 'NUMBER', 'REF4', 'REF8', 'REF16', 'REF32',
         'COMPRESSED_STRING',
     ]
 
@@ -21,11 +25,20 @@ class Scanner:
         ('compressed', 'exclusive'),
         ('code', 'exclusive'),
     )
-    
-    def t_DICT_HEADER(self, t):
-        r'101'
-        self.dict_info, t.lexer.lexpos = read_dict(t.lexer.lexdata, t.lexer.lexpos)
-        t.lexer.begin('code')
+
+    def t_DICT_SPEC_HEADER(self, t):
+        r'100'
+        lexer = t.lexer
+
+        dict_id, lexer.lexpos = exp_read(lexer.lexdata, lexer.lexpos)
+
+        dict_path = os.path.join(DICTIONARIES_DIR, f"{dict_id}.bin")
+        with open(dict_path, "r") as dict_file:
+            ext_bits = dict_file.read().strip()
+
+        self.dict_info, _ = read_dict(ext_bits, 0)
+
+        lexer.begin('code')
         return t
 
     def t_code_ZERO(self,t):

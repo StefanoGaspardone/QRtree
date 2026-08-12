@@ -327,24 +327,6 @@ static int *huffman_len_lengths(const int64_t *freq_raw, const int count) {
     return lengths;
 }
 
-static int *codec_char_lengths(const int encoding, const int A, const int64_t *char_freq_raw) {
-    switch(encoding) {
-        case ENC_FIXED: return uniform_lengths(A);
-        case ENC_POSITIONAL: {
-            if(A == 0) return NULL;
-
-            int *out = malloc(sizeof(int) * A);
-            for(int i = 0; i < A; i++) out[i] = elias_length(i);
-
-            return out;
-        }
-        case ENC_HUFF_FREQ: return huffman_freq_lengths(char_freq_raw, A);
-        case ENC_HUFF_LEN: return huffman_len_lengths(char_freq_raw, A);
-    }
-
-    return NULL;
-}
-
 static int *codec_token_lengths(const int encoding, const int64_t *tok_freq_raw, const int D) {
     switch(encoding) {
         case ENC_FIXED: return uniform_lengths(D);
@@ -397,84 +379,7 @@ static int codec_overhead_bits(const int encoding, const int count) {
     return 0;
 }
 
-static void compute_char_bit_lengths(const uint8_t *alphabet, const int A, const int *char_lengths_by_id, int *byte_len_out /* [256] */) {
-    for(int i = 0; i < A; i++) byte_len_out[alphabet[i]] = char_lengths_by_id[i];
-}
-
 typedef struct { uint8_t *data; size_t len; } StrItem;
-
-/* ============================================================
- * Alphabet
- * ============================================================ */
-typedef struct {
-    uint8_t alphabet[256];
-    int A;
-    int byte_to_id[256];
-    int char_bits;
-    int64_t char_freq_by_byte[256];
-} Alphabet;
-
-static void build_alphabet(const StrItem *strs, const int n, const int sort_by_freq, Alphabet *out) {
-    int64_t freq[256] = {0};
-    int present[256] = {0};
-
-    for(int s = 0; s < n; s++) {
-        for(size_t k = 0; k < strs[s].len; k++) {
-            const uint8_t bv = strs[s].data[k];
-            freq[bv]++;
-            present[bv] = 1;
-        }
-    }
-
-    int idxs[256]; int A = 0;
-    for(int b = 0; b < 256; b++) if (present[b]) idxs[A++] = b;
-
-    if(sort_by_freq) {
-        int first_seen_order[256]; int m = 0;
-        int seen[256] = {0};
-
-        for(int s = 0; s < n; s++) {
-            for(size_t k = 0; k < strs[s].len; k++) {
-                const uint8_t bv = strs[s].data[k];
-                if(!seen[bv]) {
-                    seen[bv] = 1;
-                    first_seen_order[m++] = bv;
-                }
-            }
-        }
-
-        for(int i = 1; i < m; i++) {
-            const int key = first_seen_order[i];
-            const int64_t kf = freq[key];
-            int j = i - 1;
-
-            while(j >= 0 && freq[first_seen_order[j]] < kf) {
-                first_seen_order[j+1] = first_seen_order[j];
-                j--;
-            }
-
-            first_seen_order[j+1] = key;
-        }
-
-        for(int i = 0; i < m; i++) idxs[i] = first_seen_order[i];
-        A = m;
-    }
-
-    out->A = A;
-    for(int i = 0; i < 256; i++) out->byte_to_id[i] = -1;
-
-    for(int i = 0; i < A; i++) {
-        out->alphabet[i] = (uint8_t)idxs[i];
-        out->byte_to_id[idxs[i]] = i;
-    }
-
-    out->char_bits = needed_bits(A);
-    memcpy(out->char_freq_by_byte, freq, sizeof(freq));
-}
-
-static void alphabet_char_freq_by_id(const Alphabet *alph, int64_t *out /* [A] */) {
-    for(int i = 0; i < alph->A; i++) out[i] = alph->char_freq_by_byte[alph->alphabet[i]];
-}
 
 /* ============================================================
  * Sym / Seq / SeqList
@@ -1557,60 +1462,6 @@ static void exhaustive_build(const StrItem *strs, const int nstrs, const int *ch
     *out_seqs = result.seqs;
 }
 
-typedef struct { int idx; int64_t f; } RankItem;
-
-static int rankitem_cmp_desc_stable(const void *a, const void *b) {
-    const RankItem *x = a, *y = b;
-
-    if(x->f != y->f) return x->f > y->f ? -1 : 1;
-    return x->idx - y->idx;
-}
-
-static void reorder_dict_for_positional(Dictionary *dict, SeqList *seqs, int64_t **out_tok_freqs) {
-    const int D = dict->n;
-    int64_t *tok_freqs = count_tok_freqs(seqs, D);
-
-    RankItem *ri = malloc(sizeof(RankItem) * (D > 0 ? D : 1));
-    for(int i = 0; i < D; i++) {
-        ri[i].idx = i;
-        ri[i].f = tok_freqs[i];
-    }
-    qsort(ri, D, sizeof(RankItem), rankitem_cmp_desc_stable);
-
-    Dictionary new_dict; dict_init(&new_dict, D > 0 ? D : 4);
-    int *old_to_new = malloc(sizeof(int) * (D > 0 ? D : 1));
-    for(int newpos = 0; newpos < D; newpos++) {
-        const int old = ri[newpos].idx;
-        dict_push(&new_dict, dict->entries[old].data, dict->entries[old].len);
-        old_to_new[old] = newpos;
-    }
-
-    SeqList new_seqs; new_seqs.n = seqs->n;
-    new_seqs.seqs = (Seq *)malloc(sizeof(Seq) * new_seqs.n);
-    for(int i = 0; i < seqs->n; i++) {
-        const Seq *src = &seqs->seqs[i];
-        Seq dst; seq_init(&dst, src->len);
-
-        for(int k = 0; k < src->len; k++) {
-            if(src->items[k].type == TOK) seq_push(&dst, TOK, old_to_new[src->items[k].val]);
-            else seq_push(&dst, RAW, src->items[k].val);
-        }
-
-        new_seqs.seqs[i] = dst;
-    }
-
-    dict_free(dict);
-    seqlist_free(seqs);
-    *dict = new_dict;
-    *seqs = new_seqs;
-
-    free(ri);
-    free(old_to_new);
-    free(tok_freqs);
-
-    *out_tok_freqs = count_tok_freqs(seqs, D);
-}
-
 /* ============================================================
  * Canonical Huffman codes
  * ============================================================ */
@@ -1650,20 +1501,6 @@ static HCode *canonical_codes(const int *lengths, const int count) {
 
     free(items);
     return codes;
-}
-
-static HCode *codec_encode_codes_from_lengths(const int encoding, const int *lengths, const int count) {
-    switch(encoding) {
-        case ENC_FIXED:
-        case ENC_POSITIONAL:
-            return NULL;
-        case ENC_HUFF_FREQ:
-        case ENC_HUFF_LEN:
-            if(count == 0) return NULL;
-            return canonical_codes(lengths, count);
-    }
-
-    return NULL;
 }
 
 typedef struct {
@@ -1770,14 +1607,220 @@ static void codec_write_overhead_ascii(const int encoding, TextBitWriter *w, con
     }
 }
 
-static void write_dict_section_ascii(TextBitWriter *w, const Alphabet *alph, const Dictionary *dict, const int64_t *char_freq_by_id, const int64_t *tok_freqs, const HCode *char_codes, const int char_bits, const int encoding) {
-    const int A = alph->A;
-    ref_enc_write(w, A);
+/* ============================================================
+ * ASCII bit reader -- counterpart of TextBitWriter. Needed only now:
+ * this is the first time the C side has to INTERPRET a bit-text buffer
+ * (the external language dictionary) instead of only producing one.
+ * ============================================================ */
+typedef struct {
+    const char *buf;
+    size_t len;
+    size_t pos;
+} TextBitReader;
 
-    for(int i = 0; i < A; i++) tbw_push_bits_msb(w, alph->alphabet[i], 8);
+static void tbr_init(TextBitReader *r, const char *buf, size_t len) {
+    r->buf = buf;
+    r->len = len;
+    r->pos = 0;
+}
 
-    codec_write_overhead_ascii(encoding, w, char_freq_by_id, A);
+static uint64_t tbr_read_bits(TextBitReader *r, const int nbits) {
+    uint64_t v = 0;
 
+    for(int i = 0; i < nbits; i++) {
+        v = (v << 1) | (uint64_t)(r->buf[r->pos] == '1' ? 1 : 0);
+        r->pos++;
+    }
+
+    return v;
+}
+
+/* Mirror of ref_enc_write/ref_enc_size_bits: reads one exponential-encoded
+ * unsigned int. Same tier loop (widths 4,4,8,16,32,...), each iteration
+ * reads exactly `width` new bits and escalates only if that chunk is
+ * saturated (equal to max_value) -- see ref_enc_write for the writer side
+ * this must stay in exact sync with. */
+static int64_t ref_enc_read(TextBitReader *r) {
+    int length = 4;
+
+    for(;;) {
+        const int ones = (length == 4) ? 0 : length / 2;
+        const int width = (length == 4) ? 4 : length / 2;
+        const int64_t max_value = (1LL << width) - 1;
+        const int64_t val = (int64_t)tbr_read_bits(r, width);
+
+        if(val < max_value) return val + exponential_ones_value(ones);
+
+        length *= 2;
+    }
+}
+
+/* ============================================================
+ * External language alphabet -- parsed from a <lang>.bin buffer already
+ * read into memory by Python (this C file never touches the filesystem).
+ * Format (fixed by build_language_dict.py, always huffman-len):
+ *   A (exp.enc.) + A bytes (8 bit) + (A+1) lengths (4 bit, ids 0..A-1
+ *   real chars, id A = escape) + D=0 (exp.enc., always-empty placeholder)
+ * ============================================================ */
+typedef struct {
+    uint8_t alphabet[256];   /* real characters, indexed 0..A-1 */
+    int A;                    /* count of real characters (escape excluded) */
+    int byte_to_id[256];      /* -1 if this byte is not covered externally */
+    HCode *codes;              /* A+1 canonical codes: 0..A-1 real, A = escape */
+    int escape_id;             /* == A, kept named for readability at call sites */
+} LangAlphabet;
+
+static void lang_alphabet_free(LangAlphabet *la) {
+    free(la->codes);
+    la->codes = NULL;
+}
+
+static LangAlphabet parse_lang_dict(const char *bits, const int32_t bits_len) {
+    TextBitReader r;
+    tbr_init(&r, bits, (size_t)bits_len);
+
+    LangAlphabet la = {0};
+
+    const int A = (int)ref_enc_read(&r);
+    la.A = A;
+    la.escape_id = A;
+
+    for(int i = 0; i < 256; i++) la.byte_to_id[i] = -1;
+
+    for(int i = 0; i < A; i++) {
+        const uint8_t b = (uint8_t)tbr_read_bits(&r, 8);
+        la.alphabet[i] = b;
+        la.byte_to_id[b] = i;
+    }
+
+    int *lengths = (int *)malloc(sizeof(int) * (A + 1));
+    for(int i = 0; i < A + 1; i++) lengths[i] = (int)tbr_read_bits(&r, 4);
+
+    la.codes = canonical_codes(lengths, A + 1);
+    free(lengths);
+
+    /* D=0 placeholder that always follows a language dictionary (it never
+     * has fragments) -- read and discard, just to stay in sync with the
+     * writer's format and to leave r at a well-defined end position. */
+    (void)ref_enc_read(&r);
+
+    return la;
+}
+
+/* ============================================================
+ * Supplemental (local) alphabet -- built on the fly from whichever bytes
+ * of THIS program are not covered by the external language alphabet.
+ * Real frequencies from the actual program are used here (unlike the
+ * language dictionary's Witten-Bell escape estimate): we have the real
+ * program in hand, no need to guess.
+ * ============================================================ */
+typedef struct {
+    uint8_t alphabet[256];
+    int A;
+    int byte_to_id[256];
+    HCode *codes;   /* A canonical codes, no escape needed here */
+} SupplAlphabet;
+
+static void suppl_alphabet_free(SupplAlphabet *sa) {
+    free(sa->codes);
+    sa->codes = NULL;
+}
+
+static SupplAlphabet build_supplemental_alphabet(const StrItem *strs, const int n, const LangAlphabet *lang) {
+    int64_t freq[256] = {0};
+    int present[256] = {0};
+
+    for(int s = 0; s < n; s++) {
+        for(size_t k = 0; k < strs[s].len; k++) {
+            const uint8_t b = strs[s].data[k];
+
+            if(lang->byte_to_id[b] < 0) {
+                freq[b]++;
+                present[b] = 1;
+            }
+        }
+    }
+
+    SupplAlphabet sa = {0};
+    for(int i = 0; i < 256; i++) sa.byte_to_id[i] = -1;
+
+    int A = 0;
+    for(int b = 0; b < 256; b++) {
+        if(present[b]) {
+            sa.alphabet[A] = (uint8_t)b;
+            sa.byte_to_id[b] = A;
+            A++;
+        }
+    }
+    sa.A = A;
+
+    if(A > 0) {
+        int64_t *freq_by_id = (int64_t *)malloc(sizeof(int64_t) * A);
+        for(int i = 0; i < A; i++) freq_by_id[i] = freq[sa.alphabet[i]];
+
+        int *lengths = huffman_len_lengths(freq_by_id, A);
+        sa.codes = canonical_codes(lengths, A);
+
+        free(freq_by_id);
+        free(lengths);
+    }
+
+    return sa;
+}
+
+/* Combines external + escape + supplemental into a single per-byte cost
+ * table, exactly what the untouched search/scoring machinery above
+ * expects as char_bit_len_by_byte -- it has no idea (and doesn't need to
+ * know) that this cost now comes from two different sources. */
+static void compute_hybrid_char_bit_lengths(const LangAlphabet *lang, const SupplAlphabet *suppl, const int escape_length, int *byte_len_out /* [256] */) {
+    for(int b = 0; b < 256; b++) {
+        if(lang->byte_to_id[b] >= 0) {
+            byte_len_out[b] = lang->codes[lang->byte_to_id[b]].length;
+        } else if(suppl->byte_to_id[b] >= 0) {
+            byte_len_out[b] = escape_length + suppl->codes[suppl->byte_to_id[b]].length;
+        } else {
+            byte_len_out[b] = 0; /* never referenced: byte unused by this program */
+        }
+    }
+}
+
+/* Writes one RAW character: external code if covered, else escape code
+ * followed immediately by the supplemental code -- no extra flag bit
+ * needed, the escape id itself (decoded from the external Huffman tree)
+ * IS the flag. Used both for literal bytes inside dictionary fragment
+ * entries and for RAW symbols in the per-string stream. */
+static void write_hybrid_char_symbol(TextBitWriter *w, const LangAlphabet *lang, const SupplAlphabet *suppl, const uint8_t byte_val) {
+    const int lang_id = lang->byte_to_id[byte_val];
+
+    if(lang_id >= 0) {
+        tbw_push_bits_msb(w, lang->codes[lang_id].code, lang->codes[lang_id].length);
+        return;
+    }
+
+    const HCode *esc = &lang->codes[lang->escape_id];
+    tbw_push_bits_msb(w, esc->code, esc->length);
+
+    const int suppl_id = suppl->byte_to_id[byte_val];
+    tbw_push_bits_msb(w, suppl->codes[suppl_id].code, suppl->codes[suppl_id].length);
+}
+
+/* Supplemental alphabet section: same block shape used everywhere else in
+ * the project (count + raw bytes + 4-bit lengths), just applied to the
+ * (usually empty) set of bytes the external language alphabet doesn't
+ * cover. A=0 -> just "reference_encoding(0)", 4 fixed bits, matching the
+ * same convention already used for D=0 elsewhere. */
+static void write_supplemental_alphabet_ascii(TextBitWriter *w, const SupplAlphabet *suppl) {
+    ref_enc_write(w, suppl->A);
+
+    for(int i = 0; i < suppl->A; i++) tbw_push_bits_msb(w, suppl->alphabet[i], 8);
+    for(int i = 0; i < suppl->A; i++) tbw_push_bits_msb(w, (uint64_t)suppl->codes[i].length, 4);
+}
+
+/* Fragments-only section (no alphabet here -- that lives in the external
+ * file). Structurally identical to the old write_dict_section_ascii minus
+ * the alphabet part, with literal fragment bytes going through
+ * write_hybrid_char_symbol instead of a single flat Huffman table. */
+static void write_fragments_section_hybrid_ascii(TextBitWriter *w, const LangAlphabet *lang, const SupplAlphabet *suppl, const Dictionary *dict, const int64_t *tok_freqs) {
     const int D = dict->n;
     ref_enc_write(w, D);
 
@@ -1785,15 +1828,18 @@ static void write_dict_section_ascii(TextBitWriter *w, const Alphabet *alph, con
         ref_enc_write(w, dict->entries[i].len);
 
         for(int k = 0; k < dict->entries[i].len; k++) {
-            const uint8_t b = dict->entries[i].data[k];
-            codec_write_symbol_ascii(encoding, w, alph->byte_to_id[b], char_codes, char_bits);
+            write_hybrid_char_symbol(w, lang, suppl, dict->entries[i].data[k]);
         }
     }
 
-    codec_write_overhead_ascii(encoding, w, tok_freqs, D);
+    codec_write_overhead_ascii(ENC_HUFF_LEN, w, tok_freqs, D);
 }
 
-static char *write_seq_ascii(const Seq *seq, const int *byte_to_id, const HCode *char_codes, const int char_bits, const HCode *tok_codes, const int token_bits, const int encoding, int32_t *out_len) {
+/* Per-string stream: RAW goes through write_hybrid_char_symbol, TOK
+ * reuses the existing generic Huffman symbol writer unchanged (fragment
+ * references were never affected by any of this -- always their own,
+ * single, program-specific Huffman table). */
+static char *write_seq_hybrid_ascii(const Seq *seq, const LangAlphabet *lang, const SupplAlphabet *suppl, const HCode *tok_codes, int32_t *out_len) {
     TextBitWriter w;
     tbw_init(&w, (size_t)seq->len * 4 + 16);
 
@@ -1802,10 +1848,10 @@ static char *write_seq_ascii(const Seq *seq, const int *byte_to_id, const HCode 
     for(int k = 0; k < seq->len; k++) {
         if(seq->items[k].type == RAW) {
             tbw_push_bits_msb(&w, 0, 1);
-            codec_write_symbol_ascii(encoding, &w, byte_to_id[(uint8_t)seq->items[k].val], char_codes, char_bits);
+            write_hybrid_char_symbol(&w, lang, suppl, (uint8_t)seq->items[k].val);
         } else {
             tbw_push_bits_msb(&w, 1, 1);
-            codec_write_symbol_ascii(encoding, &w, seq->items[k].val, tok_codes, token_bits);
+            codec_write_symbol_ascii(ENC_HUFF_LEN, &w, seq->items[k].val, tok_codes, 0);
         }
     }
 
@@ -1813,16 +1859,41 @@ static char *write_seq_ascii(const Seq *seq, const int *byte_to_id, const HCode 
     return tbw_finish(&w);
 }
 
+/* ============================================================
+ * Library API -- hybrid branch entry point.
+ *
+ * Unlike qrtree_build's local/external siblings, this branch never
+ * constructs its own alphabet from the program: it always receives one,
+ * already parsed from a <lang>.bin buffer Python has read from disk (this
+ * file still never touches the filesystem). Everything downstream of
+ * "here is a per-byte bit cost table" -- the whole greedy/DFS fragment
+ * search, unchanged above -- has no idea the cost table now blends an
+ * external Huffman tree with a small local escape-triggered one.
+ * ============================================================ */
 typedef struct {
-    char *dict_bits;
-    int32_t dict_bits_len;
+    char *dict_bits;         /* lang_id + supplemental alphabet + fragments + token overhead */
+    int32_t dict_bits_len;    /* (does NOT include the "10" mode selector -- Python writes that) */
 
-    char **stream_bits;
+    char **stream_bits;       /* n_strings ASCII '0'/'1' strings, SAME ORDER as input strings */
     int32_t *stream_bits_len;
     int32_t n_strings;
-} QRTreeCompressResult;
+} QRTreeHybridResult;
 
-QRTreeCompressResult *qrtree_compress_program(const uint8_t **strings, const int32_t *string_lens, const int32_t n_strings, const int32_t encoding, const int32_t min_len, const int32_t max_len, const int32_t max_dict, const int32_t exh_max_depth, const int32_t nthreads) {
+/*
+ * strings/string_lens: n_strings byte buffers with the program's literal
+ * strings, in source order.
+ * lang_dict_bits/lang_dict_bits_len: the ENTIRE content of <lang>.bin,
+ *   already read into memory by Python.
+ * lang_id: the 3-bit language id to embed in the header (0 = default),
+ *   purely an application-level convention -- this file does not
+ *   interpret it, only writes it.
+ * exh_max_depth: 0=greedy, -1=unlimited DFS, N=depth N. nthreads<=0 keeps
+ * the current setting.
+ */
+QRTreeHybridResult *qrtree_compress_program_hybrid(const uint8_t **strings, const int32_t *string_lens, const int32_t n_strings,
+                                                    const char *lang_dict_bits, const int32_t lang_dict_bits_len, const int32_t lang_id,
+                                                    const int32_t min_len, const int32_t max_len, const int32_t max_dict,
+                                                    const int32_t exh_max_depth, const int32_t nthreads) {
     if(nthreads > 0) g_nthreads = nthreads;
 
     ThreadPool pool;
@@ -1835,39 +1906,32 @@ QRTreeCompressResult *qrtree_compress_program(const uint8_t **strings, const int
         strs[i].len = (size_t)string_lens[i];
     }
 
-    const int sort_by_freq = (encoding == ENC_POSITIONAL);
-    Alphabet alph;
-    build_alphabet(strs, n_strings, sort_by_freq, &alph);
+    LangAlphabet lang = parse_lang_dict(lang_dict_bits, lang_dict_bits_len);
+    SupplAlphabet suppl = build_supplemental_alphabet(strs, n_strings, &lang);
+    const int escape_length = lang.codes[lang.escape_id].length;
 
-    int64_t char_freq_by_id[256];
-    alphabet_char_freq_by_id(&alph, char_freq_by_id);
-
-    int *char_lengths_by_id = codec_char_lengths(encoding, alph.A, char_freq_by_id);
     int char_bit_len_by_byte[256] = {0};
-    compute_char_bit_lengths(alph.alphabet, alph.A, char_lengths_by_id, char_bit_len_by_byte);
+    compute_hybrid_char_bit_lengths(&lang, &suppl, escape_length, char_bit_len_by_byte);
 
     const int max_depth_is_none = (exh_max_depth < 0);
     const int max_depth = max_depth_is_none ? 0 : exh_max_depth;
 
     Dictionary dictionary; SeqList seqs;
-    exhaustive_build(strs, n_strings, char_bit_len_by_byte, encoding, min_len, max_len, max_dict, max_depth, max_depth_is_none, &dictionary, &seqs);
+    exhaustive_build(strs, n_strings, char_bit_len_by_byte, ENC_HUFF_LEN, min_len, max_len, max_dict,
+                      max_depth, max_depth_is_none, &dictionary, &seqs);
 
-    int64_t *tok_freqs;
-    if(encoding == ENC_POSITIONAL) reorder_dict_for_positional(&dictionary, &seqs, &tok_freqs);
-    else tok_freqs = count_tok_freqs(&seqs, dictionary.n);
-
-    HCode *char_codes = codec_encode_codes_from_lengths(encoding, char_lengths_by_id, alph.A);
-
-    int *tok_lengths_by_id = codec_token_lengths(encoding, tok_freqs, dictionary.n);
-    HCode *tok_codes = codec_encode_codes_from_lengths(encoding, tok_lengths_by_id, dictionary.n);
-
-    const int token_bits = needed_bits(dictionary.n);
+    int64_t *tok_freqs = count_tok_freqs(&seqs, dictionary.n);
+    int *tok_lengths_by_id = dictionary.n > 0 ? huffman_len_lengths(tok_freqs, dictionary.n) : NULL;
+    HCode *tok_codes = dictionary.n > 0 ? canonical_codes(tok_lengths_by_id, dictionary.n) : NULL;
 
     TextBitWriter dict_w;
     tbw_init(&dict_w, 4096);
-    write_dict_section_ascii(&dict_w, &alph, &dictionary, char_freq_by_id, tok_freqs, char_codes, alph.char_bits, encoding);
 
-    QRTreeCompressResult *out = (QRTreeCompressResult *)malloc(sizeof(QRTreeCompressResult));
+    ref_enc_write(&dict_w, lang_id);
+    write_supplemental_alphabet_ascii(&dict_w, &suppl);
+    write_fragments_section_hybrid_ascii(&dict_w, &lang, &suppl, &dictionary, tok_freqs);
+
+    QRTreeHybridResult *out = (QRTreeHybridResult *)malloc(sizeof(QRTreeHybridResult));
     out->dict_bits = tbw_finish(&dict_w);
     out->dict_bits_len = (int32_t)dict_w.len;
 
@@ -1876,14 +1940,15 @@ QRTreeCompressResult *qrtree_compress_program(const uint8_t **strings, const int
     out->stream_bits_len = (int32_t *)malloc(sizeof(int32_t) * (seqs.n > 0 ? seqs.n : 1));
 
     for(int i = 0; i < seqs.n; i++) {
-        out->stream_bits[i] = write_seq_ascii(&seqs.seqs[i], alph.byte_to_id, char_codes, alph.char_bits, tok_codes, token_bits, encoding, &out->stream_bits_len[i]);
+        out->stream_bits[i] = write_seq_hybrid_ascii(&seqs.seqs[i], &lang, &suppl, tok_codes, &out->stream_bits_len[i]);
     }
 
-    free(char_lengths_by_id);
-    free(char_codes);
     free(tok_lengths_by_id);
     free(tok_codes);
     free(tok_freqs);
+
+    lang_alphabet_free(&lang);
+    suppl_alphabet_free(&suppl);
 
     dict_free(&dictionary);
     seqlist_free(&seqs);
@@ -1895,7 +1960,7 @@ QRTreeCompressResult *qrtree_compress_program(const uint8_t **strings, const int
     return out;
 }
 
-void qrtree_compress_program_free(QRTreeCompressResult *r) {
+void qrtree_compress_program_hybrid_free(QRTreeHybridResult *r) {
     if(!r) return;
 
     free(r->dict_bits);
