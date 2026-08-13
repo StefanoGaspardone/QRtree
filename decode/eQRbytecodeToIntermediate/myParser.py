@@ -55,10 +55,13 @@ class Parser:
 
     tokens = Scanner.tokens
 
-    # A program is a list of the encodings of the instruction of QRtree
+    # A program is a list of the encodings of the instruction of QRtree.
+    # The QRtree header here is always the DICT_SPEC_TYPE command (opcode
+    # "100" + dictionary id); the external dictionary itself is loaded and
+    # parsed by the scanner (t_DICT_SPEC_HEADER), not by this grammar rule.
     def p_prog(self,p):
         '''
-        prog : DICT_HEADER op_list
+        prog : DICT_SPEC_HEADER op_list
         '''
         self.output.close()
 

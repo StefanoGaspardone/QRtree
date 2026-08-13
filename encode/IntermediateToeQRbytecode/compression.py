@@ -6,6 +6,7 @@
 # gcc -O3 -fPIC -shared -pthread -o libc2.dylib c2_exhaustive.c -lm
 
 import ctypes
+import datetime
 import os
 import platform
 
@@ -15,6 +16,10 @@ EXH_MAX_DEPTH = 1
 MIN_LEN_DEFAULT = 2
 MAX_LEN_DEFAULT = 32
 MAX_DICT_DEFAULT = 1023
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+DICTIONARIES_DIR = os.path.normpath(os.path.join(_HERE, "..", "..", "dictionaries"))
+
 
 def _find_library_path():
     """Locate the compiled c2_exhaustive library next to this file."""
@@ -45,6 +50,7 @@ def _find_library_path():
         f"then place the resulting file in the same folder as compression.py."
     )
 
+
 class _QRTreeCompressResult(ctypes.Structure):
     _fields_ = [
         ("dict_bits", ctypes.c_char_p),
@@ -53,6 +59,7 @@ class _QRTreeCompressResult(ctypes.Structure):
         ("stream_bits_len", ctypes.POINTER(ctypes.c_int32)),
         ("n_strings", ctypes.c_int32),
     ]
+
 
 _lib = ctypes.CDLL(_find_library_path())
 
@@ -63,14 +70,45 @@ _lib.qrtree_compress_program.argtypes = [
 ]
 _lib.qrtree_compress_program_free.argtypes = [ctypes.POINTER(_QRTreeCompressResult)]
 
-def compress_program_strings(strings: list, min_len: int = MIN_LEN_DEFAULT, max_len: int = MAX_LEN_DEFAULT, max_dict: int = MAX_DICT_DEFAULT, nthreads: int = 0) -> dict:
+
+def _next_dict_id() -> int:
+    os.makedirs(DICTIONARIES_DIR, exist_ok=True)
+    counter_path = os.path.join(DICTIONARIES_DIR, "counter.txt")
+
+    next_id = 0
+    if os.path.exists(counter_path):
+        with open(counter_path, "r") as f:
+            next_id = int(f.read().strip())
+
+    with open(counter_path, "w") as f:
+        f.write(str(next_id + 1))
+
+    return next_id
+
+
+def _write_manifest_entry(dict_id: int, program_name: str):
+    """OPTIONAL, purely for debugging/traceability. Appends one line per
+    dict_id to DICTIONARIES_DIR/manifest.txt mapping it back to the
+    program it was generated from."""
+    manifest_path = os.path.join(DICTIONARIES_DIR, "manifest.txt")
+    timestamp = datetime.datetime.now().isoformat(timespec="seconds")
+
+    with open(manifest_path, "a") as f:
+        f.write(f"{dict_id}\t{program_name}\t{timestamp}\n")
+
+
+def compress_program_strings(strings: list, program_name: str, min_len: int = MIN_LEN_DEFAULT, max_len: int = MAX_LEN_DEFAULT, max_dict: int = MAX_DICT_DEFAULT, nthreads: int = 0) -> dict:
     """Entry point called by myParser.encode(). Runs the whole pipeline in
-    C and returns:
-      - 'dict_bits': the DICT_LOCAL body as ASCII '0'/'1' text (NOT
-        including the "101" command opcode -- myParser.py still writes
-        that, since it owns instruction-level bytecode layout)
+    C, writes the resulting dictionary to DICTIONARIES_DIR/<id>.bin (all
+    file I/O and id/manifest bookkeeping happens here, not in the
+    scanner/parser), and returns:
+      - 'dict_id': the external dictionary's id -- myParser.py only needs
+        to write "01" + referenceEncoding(dict_id) as the QRtree header
       - 'stream_bits': one ASCII '0'/'1' string per input string, in the
         SAME ORDER as `strings`, consumed one-by-one by stringEncoding()
+
+    program_name is only used for the manifest entry (traceability), e.g.
+    pass the output file's base name.
     """
 
     if nthreads == 0:
@@ -93,7 +131,13 @@ def compress_program_strings(strings: list, min_len: int = MIN_LEN_DEFAULT, max_
 
     _lib.qrtree_compress_program_free(res_ptr)
 
+    dict_id = _next_dict_id()
+    _write_manifest_entry(dict_id, program_name)
+
+    with open(os.path.join(DICTIONARIES_DIR, f"{dict_id}.bin"), "w") as dict_file:
+        dict_file.write(dict_bits)
+
     return {
-        'dict_bits': dict_bits,
+        'dict_id': dict_id,
         'stream_bits': stream_bits,
     }

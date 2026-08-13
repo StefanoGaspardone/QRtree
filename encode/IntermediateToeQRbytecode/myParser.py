@@ -12,23 +12,22 @@ class Parser:
         self.fileName = fileName
         self.compressed = None
         self.compressed_idx = 0
-        
-    
+
+
     # Collect all quoted string literals from the .qr source, in order
     def _extract_program_strings(self, source_text):
         return re.findall(r'"([^"]*)"', source_text)
 
-
-    # Compress program strings, write the DICT_LOCAL header, then parse
+    # Compress program strings
     def encode(self, source_text, min_len = 2, max_len = 32, max_dict = 1023):
         strings = self._extract_program_strings(source_text)
 
-        result = compress_program_strings(strings, min_len = min_len, max_len = max_len, max_dict = max_dict)
+        result = compress_program_strings(strings, self.fileName, min_len = min_len, max_len = max_len, max_dict = max_dict)
         self.compressed = result
         self.compressed_idx = 0
 
         self.output = open(f"{self.fileName}.bin", "w")
-        self.output.write("00" + result['dict_bits'])
+        self.output.write("01" + self.referenceEncoding(result['dict_id']))
 
         self.parser.parse(source_text)
 
@@ -79,7 +78,6 @@ class Parser:
     tokens = Scanner.tokens
 
 
-    # A program is a list of operations (instructions from the definition of the QRtree dialect)
     def p_prog(self,p):
         '''
         prog : op_list
@@ -102,9 +100,6 @@ class Parser:
             | RO INTEGER RC if
             | RO INTEGER RC ifc
         '''
-
-    # Each instruction has its own code, and then it encodes its other parameters 
-    # using the appropriate function among the ones listed above
 
     def p_input(self,p):
         '''
@@ -177,13 +172,11 @@ class Parser:
 
         if isinstance(p[3], int):
             p[0] = '110' + p[2] 
-            # Decides how to encode the integer
             if(-32768 <= p[3] <= 32767):
                 p[0] = p[0] + '00' + self.twos_complement_binary(p[3], 16)
             else:
                 p[0] = p[0] + '01' + self.twos_complement_binary(p[3], 32)
         else:
-            # Decides how to encode the floating point
             f = str(p[3]).lower().split("f")
             if(f[1] == "16"):
                 p[0] = '110' + p[2] + '10' + format(struct.unpack('!H', struct.pack('!e', float(f[0])))[0], '016b')
@@ -200,7 +193,6 @@ class Parser:
     
         p[0] = p[1]
 
-    # Each relational operator has its own code
     def p_rel_op(self,p):
         '''
         rel_op : EQ 
