@@ -23,7 +23,7 @@ class Scanner:
     )
     
     def t_DICT_HEADER(self, t):
-        r'101'
+        r'00'
         self.dict_info, t.lexer.lexpos = read_dict(t.lexer.lexdata, t.lexer.lexpos)
         t.lexer.begin('code')
         return t

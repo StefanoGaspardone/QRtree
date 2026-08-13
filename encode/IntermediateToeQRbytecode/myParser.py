@@ -28,7 +28,7 @@ class Parser:
         self.compressed_idx = 0
 
         self.output = open(f"{self.fileName}.bin", "w")
-        self.output.write("101" + result['dict_bits'])
+        self.output.write("00" + result['dict_bits'])
 
         self.parser.parse(source_text)
 
