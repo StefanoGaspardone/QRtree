@@ -30,8 +30,11 @@ class Parser:
 
         self.parser.parse(source_text)
 
-    # Return the pre-computed (fully C-serialized) compressed bitstring for the next string, in source order
+    # Return the pre-computed compressed bitstring for the next string, in source order (by means of C optimization)
     def stringEncoding(self, string):
+        if self.compressed is None:
+            raise Exception("No compression generated")
+        
         bits = self.compressed['stream_bits'][self.compressed_idx]
         self.compressed_idx += 1
 

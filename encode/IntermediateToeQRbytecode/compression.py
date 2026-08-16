@@ -122,10 +122,10 @@ def _load_language_dict(language: str):
 
 def compress_program_strings(strings: list, language: str = "en", min_len: int = MIN_LEN_DEFAULT, max_len: int = MAX_LEN_DEFAULT, max_dict: int = MAX_DICT_DEFAULT, nthreads: int = 0) -> dict:
     """Entry point called by myParser.encode(). Runs the whole hybrid pipeline in C, fragment dictionary searched locally on this program's strings, but the alphabet is loaded from the external
-    dictionaries/languages/<language>.bin instead of being built from the program -- and returns:
+    dictionaries/languages/<language>.bin instead of being built from the program and returns:
       - 'dict_bits': lang_id + supplemental alphabet (for any characters
         the language alphabet doesn't cover) + fragments, as ASCII
-        '0'/'1' text (NOT including the "10" mode selector -- myParser.py
+        '0'/'1' text (NOT including the "10" mode selector, myParser.py
         still writes that, since it owns instruction-level bytecode layout)
       - 'stream_bits': one ASCII '0'/'1' string per input string, in the
         SAME ORDER as `strings`, consumed one-by-one by stringEncoding()

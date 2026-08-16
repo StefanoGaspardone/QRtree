@@ -71,10 +71,8 @@ def huffman_read_symbol(bits: str, pos: int, lookup: dict, max_len: int) -> tupl
     raise ValueError("Invalid Huffman code")
 
 def read_lang_dict(bits: str, pos: int) -> tuple:
-    """Decode an external language alphabet (build_language_dict.py
-    format): A bytes + (A+1) lengths -- ids 0..A-1 are real characters,
-    id A is the reserved escape symbol -- followed by the D=0 placeholder
-    that always closes a language dictionary (it never has fragments)."""
+    """Decode an external language alphabet (build_language_dict.py format): A bytes + (A+1) lengths -- ids 0..A-1 are real characters,
+    id A is the reserved escape symbol -- followed by the D=0 placeholder that always closes a language dictionary (it never has fragments)."""
     
     A, pos = exp_read(bits, pos)
 
@@ -104,10 +102,8 @@ def read_lang_dict(bits: str, pos: int) -> tuple:
 
 
 def read_supplemental_alphabet(bits: str, pos: int) -> tuple:
-    """Decode the local supplemental alphabet: same block shape as the
-    language alphabet's real-character section, but no escape symbol of
-    its own (an escape can't itself be unescapable) and usually empty
-    (A=0) when the language alphabet already covers the whole program."""
+    """Decode the local supplemental alphabet: same block shape as the language alphabet's real-character section, but no escape symbol of
+    its own (an escape can't itself be unescapable) and usually empty (A=0) when the language alphabet already covers the whole program."""
     
     A, pos = exp_read(bits, pos)
 
@@ -132,8 +128,7 @@ def read_supplemental_alphabet(bits: str, pos: int) -> tuple:
 
 
 def read_hybrid_char(bits: str, pos: int, lang_info: dict, suppl_info: dict) -> tuple:
-    """Decode one character: try the external language Huffman tree
-    first; if it decodes to the reserved escape id, the real byte
+    """Decode one character: try the external language Huffman tree first; if it decodes to the reserved escape id, the real byte
     follows immediately, coded with the local supplemental tree instead."""
     
     sym, pos = huffman_read_symbol(bits, pos, lang_info['lookup'], lang_info['max_len'])
@@ -146,8 +141,7 @@ def read_hybrid_char(bits: str, pos: int, lang_info: dict, suppl_info: dict) -> 
 
 
 def read_fragments_hybrid(bits: str, pos: int, lang_info: dict, suppl_info: dict) -> tuple:
-    """Decode the fragments-only section (no alphabet here -- that lives
-    externally): D + D entries, each length-prefixed and made of hybrid
+    """Decode the fragments-only section (no alphabet here -- that lives externally): D + D entries, each length-prefixed and made of hybrid
     characters, followed by the token (fragment-index) Huffman overhead."""
     
     D, pos = exp_read(bits, pos)
@@ -177,10 +171,8 @@ def read_fragments_hybrid(bits: str, pos: int, lang_info: dict, suppl_info: dict
 
 
 def read_compressed_string_hybrid(bits: str, pos: int, lang_info: dict, suppl_info: dict, frag_info: dict) -> tuple:
-    """Decode one compressed program string: symbol count + flagged
-    RAW/TOK symbols, exactly like the other branches -- RAW goes through
-    read_hybrid_char (external-or-escape+supplemental), TOK looks up a
-    fragment by its own Huffman-coded index, same as everywhere else."""
+    """Decode one compressed program string: symbol count + flagged RAW/TOK symbols, exactly like the other branches, RAW goes through
+    read_hybrid_char (external-or-escape+supplemental), TOK looks up a fragment by its own Huffman-coded index, same as everywhere else."""
     
     N, pos = exp_read(bits, pos)
 
@@ -199,15 +191,11 @@ def read_compressed_string_hybrid(bits: str, pos: int, lang_info: dict, suppl_in
     return out.decode('utf-8'), pos
 
 def load_hybrid_dictionaries(lang_id: int, bits: str, pos: int, dictionaries_dir: str) -> tuple:
-    """Everything the scanner needs after reading lang_id from the
-    header: resolve the language, load dictionaries/languages/<lang>.bin,
-    and parse the language alphabet + local supplemental alphabet +
-    fragments that follow it in the bytecode -- all the actual
-    compression/decompression logic, kept out of the scanner (which only
-    does lexer/parser plumbing).
+    """Everything the scanner needs after reading lang_id from the header: resolve the language, load dictionaries/languages/<lang>.bin,
+    and parse the language alphabet + local supplemental alphabet + fragments that follow it in the bytecode -- all the actual
+    compression/decompression logic, kept out of the scanner (which only does lexer/parser plumbing).
 
-    On any failure (unknown language, missing/corrupted file, malformed
-    section) logs a clear error and terminates (sys.exit(1)) instead of a
+    On any failure (unknown language, missing/corrupted file, malformed section) logs a clear error and terminates (sys.exit(1)) instead of a
     confusing low-level traceback or, worse, a silently wrong decode.
 
     Returns (lang_info, suppl_info, frag_info, new_pos).
