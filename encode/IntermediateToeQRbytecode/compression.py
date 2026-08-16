@@ -19,6 +19,7 @@ FALLBACK_LANGUAGE = "en"
 
 LANGUAGE_IDS = {
     "en": 0,
+    "it": 1,
     # dictionaries/languages/<lang>.bin
 }
 

@@ -6,6 +6,7 @@ import sys
 
 LANGUAGE_IDS = {
     "en": 0,
+    "it": 1,
 }
 
 ID_TO_LANGUAGE = {v: k for k, v in LANGUAGE_IDS.items()}

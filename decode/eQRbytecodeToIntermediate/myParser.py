@@ -7,7 +7,7 @@ class Parser:
     def __init__(self,lexer, fileName, debug=False):
         self.parser = yacc.yacc(module=self, debug=debug)
         self.lexer = lexer
-        self.output = open(f"{fileName}.qr", "w")
+        self.output = open(f"{fileName}.qr", "w", encoding="utf-8")
         self.curline = 0
         self.endChar = ""
 
