@@ -15,6 +15,8 @@ MIN_LEN_DEFAULT = 2
 MAX_LEN_DEFAULT = 32
 MAX_DICT_DEFAULT = 1023
 
+FALLBACK_LANGUAGE = "en"
+
 LANGUAGE_IDS = {
     "en": 0,
     # dictionaries/languages/<lang>.bin
@@ -72,41 +74,54 @@ _lib.qrtree_compress_program_hybrid.argtypes = [
 ]
 _lib.qrtree_compress_program_hybrid_free.argtypes = [ctypes.POINTER(_QRTreeHybridResult)]
 
-def _load_language_dict(language: str):
-    """Resolves a language code to (lang_id, dict_bits), reading
-    LANGUAGES_DIR/<language>.bin. Clear errors on unknown language or
-    missing file, same style already used elsewhere in the project for
-    missing/corrupted external dictionaries."""
 
+def _language_dict_path(language: str) -> str:
+    return os.path.join(LANGUAGES_DIR, f"{language}.bin")
+
+def _resolve_language(language: str) -> str:
+    """Resolves which language to actually use for THIS compression. Fallback only makes sense at encode time (we're free to pick a
+    different external alphabet to build against); the decoder has no such freedom -- it must find the exact language dictionary the
+    encoder actually used, since its Huffman codes are baked into the bytecode. Never apply this kind of fallback on the decode side."""
+    
+    if language in LANGUAGE_IDS and os.path.exists(_language_dict_path(language)):
+        return language
+ 
     if language not in LANGUAGE_IDS:
-        raise ValueError(
-            f"Unknown language '{language}'. Known languages: {sorted(LANGUAGE_IDS)}. "
-            f"Add it to LANGUAGE_IDS in compression.py, and make sure "
-            f"dictionaries/languages/{language}.bin exists (build it with "
-            f"build_language_dict.py first)."
-        )
-
-    lang_id = LANGUAGE_IDS[language]
-    dict_path = os.path.join(LANGUAGES_DIR, f"{language}.bin")
-
-    if not os.path.exists(dict_path):
+        print(f"note: language '{language}' not recognized (not present in LANGUAGE_IDS), falling back to '{FALLBACK_LANGUAGE}'")
+    else:
+        print(f"note: dictionary for language '{language}' not found ({_language_dict_path(language)}), falling back to '{FALLBACK_LANGUAGE}'")
+ 
+    if language == FALLBACK_LANGUAGE:
         raise FileNotFoundError(
-            f"Language dictionary not found for '{language}': {dict_path}. "
-            f"Build it first with build_language_dict.py."
+            f"The fallback language '{FALLBACK_LANGUAGE}' itself is not available: {_language_dict_path(FALLBACK_LANGUAGE)}. "
+            f"Build at least one dictionary with build_language_dict.py."
         )
+ 
+    if FALLBACK_LANGUAGE in LANGUAGE_IDS and os.path.exists(_language_dict_path(FALLBACK_LANGUAGE)):
+        return FALLBACK_LANGUAGE
+ 
+    raise FileNotFoundError(
+        f"No dictionary available: both '{language}' and the fallback '{FALLBACK_LANGUAGE}' are missing "
+        f"({_language_dict_path(FALLBACK_LANGUAGE)}). Build at least one dictionary with build_language_dict.py."
+    )
 
-    with open(dict_path, "r") as f:
+
+def _load_language_dict(language: str):
+    """Resolves a language code to (lang_id, dict_bits), falling back to FALLBACK_LANGUAGE if the requested one is unknown or its file is
+    missing (see _resolve_language). Reads LANGUAGES_DIR/<resolved_language>.bin."""
+
+    resolved = _resolve_language(language)
+    lang_id = LANGUAGE_IDS[resolved]
+
+    with open(_language_dict_path(resolved), "r") as f:
         lang_bits = f.read().strip()
 
     return lang_id, lang_bits
 
 
 def compress_program_strings(strings: list, language: str = "en", min_len: int = MIN_LEN_DEFAULT, max_len: int = MAX_LEN_DEFAULT, max_dict: int = MAX_DICT_DEFAULT, nthreads: int = 0) -> dict:
-    """Entry point called by myParser.encode(). Runs the whole hybrid
-    pipeline in C -- fragment dictionary searched locally on this
-    program's strings, but the alphabet is loaded from the external
-    dictionaries/languages/<language>.bin instead of being built from
-    the program -- and returns:
+    """Entry point called by myParser.encode(). Runs the whole hybrid pipeline in C, fragment dictionary searched locally on this program's strings, but the alphabet is loaded from the external
+    dictionaries/languages/<language>.bin instead of being built from the program -- and returns:
       - 'dict_bits': lang_id + supplemental alphabet (for any characters
         the language alphabet doesn't cover) + fragments, as ASCII
         '0'/'1' text (NOT including the "10" mode selector -- myParser.py

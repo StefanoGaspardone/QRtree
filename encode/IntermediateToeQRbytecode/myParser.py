@@ -18,7 +18,7 @@ class Parser:
         return re.findall(r'"([^"]*)"', source_text)
 
     # Compress program strings using the hybrid pipeline
-    def encode(self, source_text, language = "en", min_len = 2, max_len = 32, max_dict = 1023):
+    def encode(self, source_text, language, min_len = 2, max_len = 32, max_dict = 1023):
         strings = self._extract_program_strings(source_text)
 
         result = compress_program_strings(strings, language = language, min_len = min_len, max_len = max_len, max_dict = max_dict)

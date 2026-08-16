@@ -4,6 +4,12 @@
 import os
 import sys
 
+LANGUAGE_IDS = {
+    "en": 0,
+}
+
+ID_TO_LANGUAGE = {v: k for k, v in LANGUAGE_IDS.items()}
+
 def exp_read(bits: str, pos: int, n0: int = 4) -> tuple:
     """Decode one exponential-encoded unsigned int starting at pos."""
     
@@ -54,7 +60,6 @@ def huffman_read_symbol(bits: str, pos: int, lookup: dict, max_len: int) -> tupl
     """Decode one canonical Huffman symbol starting at pos."""
     
     cur = 0
-    
     for L in range(1, max_len + 1):
         cur = (cur << 1) | int(bits[pos])
         pos += 1
@@ -73,11 +78,9 @@ def read_lang_dict(bits: str, pos: int) -> tuple:
     A, pos = exp_read(bits, pos)
 
     alphabet = bytearray()
-    
     for _ in range(A):
         alphabet.append(int(bits[pos:pos + 8], 2))
         pos += 8
-    
     alphabet = bytes(alphabet)
 
     lengths = {}
@@ -108,11 +111,9 @@ def read_supplemental_alphabet(bits: str, pos: int) -> tuple:
     A, pos = exp_read(bits, pos)
 
     alphabet = bytearray()
-    
     for _ in range(A):
         alphabet.append(int(bits[pos:pos + 8], 2))
         pos += 8
-    
     alphabet = bytes(alphabet)
 
     lengths = {}
@@ -151,7 +152,6 @@ def read_fragments_hybrid(bits: str, pos: int, lang_info: dict, suppl_info: dict
     D, pos = exp_read(bits, pos)
 
     dictionary = []
-    
     for _ in range(D):
         L, pos = exp_read(bits, pos)
         entry = bytearray()
@@ -166,7 +166,6 @@ def read_fragments_hybrid(bits: str, pos: int, lang_info: dict, suppl_info: dict
     for i in range(D):
         tok_lengths[i] = int(bits[pos:pos + 4], 2)
         pos += 4
-    
     tok_lookup, tok_max_len = canonical_lookup(tok_lengths) if D > 0 else ({}, 0)
 
     return {
@@ -197,13 +196,6 @@ def read_compressed_string_hybrid(bits: str, pos: int, lang_info: dict, suppl_in
             out.extend(frag_info['dictionary'][tid])
 
     return out.decode('utf-8'), pos
-
-
-LANGUAGE_IDS = {
-    "en": 0,
-}
-ID_TO_LANGUAGE = {v: k for k, v in LANGUAGE_IDS.items()}
-
 
 def load_hybrid_dictionaries(lang_id: int, bits: str, pos: int, dictionaries_dir: str) -> tuple:
     """Everything the scanner needs after reading lang_id from the
@@ -241,6 +233,7 @@ def load_hybrid_dictionaries(lang_id: int, bits: str, pos: int, dictionaries_dir
 
     try:
         lang_info, lang_end_pos = read_lang_dict(lang_bits, 0)
+        
         if lang_end_pos != len(lang_bits):
             raise ValueError("unexpected trailing data after parsing")
 
