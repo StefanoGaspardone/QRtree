@@ -1,7 +1,7 @@
 import os
 import ply.lex as lex
 from ply.lex import TOKEN
-from .decompression import exp_read, load_hybrid_dictionaries, read_compressed_string_hybrid
+from .decompression import load_unified_dictionaries, read_compressed_string_unified
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 DICTIONARIES_DIR = os.path.normpath(os.path.join(_HERE, "..", "..", "dictionaries"))
@@ -12,7 +12,7 @@ class Scanner:
         self.lexer = lex.lex(module=self, debug=debug)
 
     tokens = [
-        'HYBRID_HEADER', 'ZERO', 'ONE', 'BYTE', 'NUMBER', 'REF4', 'REF8', 'REF16', 'REF32',
+        'DICT_HEADER', 'ZERO', 'ONE', 'BYTE', 'NUMBER', 'REF4', 'REF8', 'REF16', 'REF32',
         'COMPRESSED_STRING',
     ]
 
@@ -26,13 +26,10 @@ class Scanner:
         ('code', 'exclusive'),
     )
 
-    def t_HYBRID_HEADER(self, t):
-        r'10'
+    def t_DICT_HEADER(self, t):
+        r'[01]'
         lexer = t.lexer
-
-        lang_id, lexer.lexpos = exp_read(lexer.lexdata, lexer.lexpos)
-        self.lang_info, self.suppl_info, self.frag_info, lexer.lexpos = load_hybrid_dictionaries(lang_id, lexer.lexdata, lexer.lexpos, DICTIONARIES_DIR)
-
+        self.mode, self.char_info, self.suppl_info, self.frag_info, lexer.lexpos = load_unified_dictionaries(lexer.lexdata, lexer.lexpos - 1, DICTIONARIES_DIR)
         lexer.begin('code')
         return t
 
@@ -103,6 +100,6 @@ class Scanner:
         r'[01]'
         lexer = t.lexer
         lexer.lexpos -= 1
-        t.value, lexer.lexpos = read_compressed_string_hybrid(lexer.lexdata, lexer.lexpos, self.lang_info, self.suppl_info, self.frag_info)
+        t.value, lexer.lexpos = read_compressed_string_unified(lexer.lexdata, lexer.lexpos, self.mode, self.char_info, self.suppl_info, self.frag_info)
         lexer.begin('code')
         return t

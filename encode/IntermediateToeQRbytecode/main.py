@@ -13,12 +13,12 @@ from .myScanner import Scanner
 from .myParser import Parser
 import os
 
-def encode(file, debug, language = "en"):
+def encode(file, debug, language = "en", max_depth = 1):
     fileName = os.path.splitext(file)[0]
     scanner = Scanner(debug)
     parser_obj = Parser(scanner, fileName, debug)
-
+ 
     with open(f"{fileName}.qr", 'r', encoding = 'utf-8') as input_file:
         source_text = input_file.read()
-
-    parser_obj.encode(source_text, language)
+ 
+    parser_obj.encode(source_text, language, exh_max_depth = max_depth)

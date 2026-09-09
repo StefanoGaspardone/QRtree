@@ -11,9 +11,10 @@ LANGUAGE_IDS = {
 
 ID_TO_LANGUAGE = {v: k for k, v in LANGUAGE_IDS.items()}
 
+
 def exp_read(bits: str, pos: int, n0: int = 4) -> tuple:
-    """Decode one exponential-encoded unsigned int starting at pos."""
-    
+    """Decode one exponential-encoded unsigned int."""
+
     n = n0
     ext = 0
     total = 0
@@ -28,15 +29,16 @@ def exp_read(bits: str, pos: int, n0: int = 4) -> tuple:
             return total + v, pos
 
         total += max_val
-        
+
         if ext > 0:
             n *= 2
-        
+
         ext += 1
 
+
 def canonical_lookup(lengths: dict) -> tuple:
-    """Invert canonical_codes: map (code, length) back to the original symbol."""
-    
+    """Build a (code, length) -> symbol lookup from canonical Huffman lengths."""
+
     syms = sorted(lengths.keys(), key=lambda s: (lengths[s], s))
 
     lookup = {}
@@ -46,10 +48,10 @@ def canonical_lookup(lengths: dict) -> tuple:
 
     for s in syms:
         L = lengths[s]
-        
+
         if L > prev:
             code <<= (L - prev)
-        
+
         lookup[(code, L)] = s
         code += 1
         prev = L
@@ -57,23 +59,24 @@ def canonical_lookup(lengths: dict) -> tuple:
 
     return lookup, max_len
 
+
 def huffman_read_symbol(bits: str, pos: int, lookup: dict, max_len: int) -> tuple:
-    """Decode one canonical Huffman symbol starting at pos."""
-    
+    """Decode one canonical Huffman symbol."""
+
     cur = 0
     for L in range(1, max_len + 1):
         cur = (cur << 1) | int(bits[pos])
         pos += 1
-        
+
         if (cur, L) in lookup:
             return lookup[(cur, L)], pos
-    
+
     raise ValueError("Invalid Huffman code")
 
+
 def read_lang_dict(bits: str, pos: int) -> tuple:
-    """Decode an external language alphabet (build_language_dict.py format): A bytes + (A+1) lengths -- ids 0..A-1 are real characters,
-    id A is the reserved escape symbol -- followed by the D=0 placeholder that always closes a language dictionary (it never has fragments)."""
-    
+    """Decode an external language alphabet (A bytes + A+1 lengths, last id = escape) + trailing D=0."""
+
     A, pos = exp_read(bits, pos)
 
     alphabet = bytearray()
@@ -102,9 +105,8 @@ def read_lang_dict(bits: str, pos: int) -> tuple:
 
 
 def read_supplemental_alphabet(bits: str, pos: int) -> tuple:
-    """Decode the local supplemental alphabet: same block shape as the language alphabet's real-character section, but no escape symbol of
-    its own (an escape can't itself be unescapable) and usually empty (A=0) when the language alphabet already covers the whole program."""
-    
+    """Decode the local supplemental alphabet (chars the external one doesn't cover), no escape of its own."""
+
     A, pos = exp_read(bits, pos)
 
     alphabet = bytearray()
@@ -127,34 +129,57 @@ def read_supplemental_alphabet(bits: str, pos: int) -> tuple:
     }, pos
 
 
-def read_hybrid_char(bits: str, pos: int, lang_info: dict, suppl_info: dict) -> tuple:
-    """Decode one character: try the external language Huffman tree first; if it decodes to the reserved escape id, the real byte
-    follows immediately, coded with the local supplemental tree instead."""
-    
-    sym, pos = huffman_read_symbol(bits, pos, lang_info['lookup'], lang_info['max_len'])
+def read_local_alphabet(bits: str, pos: int) -> tuple:
+    """Decode the full local alphabet (A bytes + A lengths), no escape -- covers 100% of the program by construction."""
 
-    if sym == lang_info['escape_id']:
+    A, pos = exp_read(bits, pos)
+
+    alphabet = bytearray()
+    for _ in range(A):
+        alphabet.append(int(bits[pos:pos + 8], 2))
+        pos += 8
+    alphabet = bytes(alphabet)
+
+    lengths = {}
+    for i in range(A):
+        lengths[i] = int(bits[pos:pos + 4], 2)
+        pos += 4
+
+    lookup, max_len = canonical_lookup(lengths) if A > 0 else ({}, 0)
+
+    return {
+        'alphabet': alphabet,
+        'lookup': lookup,
+        'max_len': max_len,
+    }, pos
+
+
+def read_char_unified(bits: str, pos: int, mode: int, char_info: dict, suppl_info) -> tuple:
+    """Decode one character: mode 0 tries the external tree first, falling back to escape+supplemental; mode 1 reads the local tree directly."""
+
+    sym, pos = huffman_read_symbol(bits, pos, char_info['lookup'], char_info['max_len'])
+
+    if mode == 0 and sym == char_info['escape_id']:
         suppl_sym, pos = huffman_read_symbol(bits, pos, suppl_info['lookup'], suppl_info['max_len'])
         return suppl_info['alphabet'][suppl_sym], pos
 
-    return lang_info['alphabet'][sym], pos
+    return char_info['alphabet'][sym], pos
 
 
-def read_fragments_hybrid(bits: str, pos: int, lang_info: dict, suppl_info: dict) -> tuple:
-    """Decode the fragments-only section (no alphabet here -- that lives externally): D + D entries, each length-prefixed and made of hybrid
-    characters, followed by the token (fragment-index) Huffman overhead."""
-    
+def read_fragments_unified(bits: str, pos: int, mode: int, char_info: dict, suppl_info) -> tuple:
+    """Decode the fragments section: entry count, each length-prefixed entry, then the token Huffman overhead."""
+
     D, pos = exp_read(bits, pos)
 
     dictionary = []
     for _ in range(D):
         L, pos = exp_read(bits, pos)
         entry = bytearray()
-        
+
         for _ in range(L):
-            b, pos = read_hybrid_char(bits, pos, lang_info, suppl_info)
+            b, pos = read_char_unified(bits, pos, mode, char_info, suppl_info)
             entry.append(b)
-        
+
         dictionary.append(bytes(entry))
 
     tok_lengths = {}
@@ -170,10 +195,9 @@ def read_fragments_hybrid(bits: str, pos: int, lang_info: dict, suppl_info: dict
     }, pos
 
 
-def read_compressed_string_hybrid(bits: str, pos: int, lang_info: dict, suppl_info: dict, frag_info: dict) -> tuple:
-    """Decode one compressed program string: symbol count + flagged RAW/TOK symbols, exactly like the other branches, RAW goes through
-    read_hybrid_char (external-or-escape+supplemental), TOK looks up a fragment by its own Huffman-coded index, same as everywhere else."""
-    
+def read_compressed_string_unified(bits: str, pos: int, mode: int, char_info: dict, suppl_info, frag_info: dict) -> tuple:
+    """Decode one compressed program string: symbol count + flagged RAW/TOK symbols."""
+
     N, pos = exp_read(bits, pos)
 
     out = bytearray()
@@ -182,7 +206,7 @@ def read_compressed_string_hybrid(bits: str, pos: int, lang_info: dict, suppl_in
         pos += 1
 
         if flag == '0':
-            b, pos = read_hybrid_char(bits, pos, lang_info, suppl_info)
+            b, pos = read_char_unified(bits, pos, mode, char_info, suppl_info)
             out.append(b)
         else:
             tid, pos = huffman_read_symbol(bits, pos, frag_info['tok_lookup'], frag_info['tok_max_len'])
@@ -190,46 +214,54 @@ def read_compressed_string_hybrid(bits: str, pos: int, lang_info: dict, suppl_in
 
     return out.decode('utf-8'), pos
 
-def load_hybrid_dictionaries(lang_id: int, bits: str, pos: int, dictionaries_dir: str) -> tuple:
-    """Everything the scanner needs after reading lang_id from the header: resolve the language, load dictionaries/languages/<lang>.bin,
-    and parse the language alphabet + local supplemental alphabet + fragments that follow it in the bytecode -- all the actual
-    compression/decompression logic, kept out of the scanner (which only does lexer/parser plumbing).
 
-    On any failure (unknown language, missing/corrupted file, malformed section) logs a clear error and terminates (sys.exit(1)) instead of a
-    confusing low-level traceback or, worse, a silently wrong decode.
+def load_unified_dictionaries(bits: str, pos: int, dictionaries_dir: str) -> tuple:
+    """Read the 1-bit mode selector and load whatever it points to: external language dict + local supplemental (bit '0'), or a full local alphabet (bit '1'). Terminates on any failure."""
 
-    Returns (lang_info, suppl_info, frag_info, new_pos).
-    """
-    
-    language = ID_TO_LANGUAGE.get(lang_id)
-    if language is None:
-        print(f"ERROR: unknown lang_id {lang_id} (no entry in ID_TO_LANGUAGE). "
-              f"Known ids: {sorted(ID_TO_LANGUAGE)}")
-        sys.exit(1)
+    mode = int(bits[pos])
+    pos += 1
 
-    dict_path = os.path.join(dictionaries_dir, "languages", f"{language}.bin")
+    if mode == 0:
+        lang_id, pos = exp_read(bits, pos)
 
-    try:
-        with open(dict_path, "r") as dict_file:
-            lang_bits = dict_file.read().strip()
-    except OSError as e:
-        print(f"ERROR: language dictionary for '{language}' (lang_id={lang_id}) not found or unreadable: {dict_path} ({e})")
-        sys.exit(1)
+        language = ID_TO_LANGUAGE.get(lang_id)
+        if language is None:
+            print(f"ERROR: unknown lang_id {lang_id} (no entry in ID_TO_LANGUAGE). Known ids: {sorted(ID_TO_LANGUAGE)}")
+            sys.exit(1)
 
-    if not lang_bits or any(c not in "01" for c in lang_bits):
-        print(f"ERROR: language dictionary for '{language}' is corrupted (not a valid '0'/'1' bitstring): {dict_path}")
-        sys.exit(1)
+        dict_path = os.path.join(dictionaries_dir, "languages", f"{language}.bin")
 
-    try:
-        lang_info, lang_end_pos = read_lang_dict(lang_bits, 0)
-        
-        if lang_end_pos != len(lang_bits):
-            raise ValueError("unexpected trailing data after parsing")
+        try:
+            with open(dict_path, "r") as dict_file:
+                lang_bits = dict_file.read().strip()
+        except OSError as e:
+            print(f"ERROR: language dictionary for '{language}' (lang_id={lang_id}) not found or unreadable: {dict_path} ({e})")
+            sys.exit(1)
 
-        suppl_info, pos = read_supplemental_alphabet(bits, pos)
-        frag_info, pos = read_fragments_hybrid(bits, pos, lang_info, suppl_info)
-    except Exception as e:
-        print(f"ERROR: failed to parse hybrid dictionary section (lang_id={lang_id}, language='{language}'): {e}")
-        sys.exit(1)
+        if not lang_bits or any(c not in "01" for c in lang_bits):
+            print(f"ERROR: language dictionary for '{language}' is corrupted (not a valid '0'/'1' bitstring): {dict_path}")
+            sys.exit(1)
 
-    return lang_info, suppl_info, frag_info, pos
+        try:
+            lang_info, lang_end_pos = read_lang_dict(lang_bits, 0)
+
+            if lang_end_pos != len(lang_bits):
+                raise ValueError("unexpected trailing data after parsing")
+
+            suppl_info, pos = read_supplemental_alphabet(bits, pos)
+            frag_info, pos = read_fragments_unified(bits, pos, 0, lang_info, suppl_info)
+        except Exception as e:
+            print(f"ERROR: failed to parse dictionary section (lang_id={lang_id}, language='{language}'): {e}")
+            sys.exit(1)
+
+        return 0, lang_info, suppl_info, frag_info, pos
+
+    else:
+        try:
+            local_info, pos = read_local_alphabet(bits, pos)
+            frag_info, pos = read_fragments_unified(bits, pos, 1, local_info, None)
+        except Exception as e:
+            print(f"ERROR: failed to parse local dictionary section: {e}")
+            sys.exit(1)
+
+        return 1, local_info, None, frag_info, pos

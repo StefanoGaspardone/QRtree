@@ -31,7 +31,7 @@ def main(args):
     
 def main_encode(args):
     HighLevelToIntermediate.encode(args.input, args.debug)
-    IntermediateToeQRbytecode.encode(args.input, args.debug, args.language)
+    IntermediateToeQRbytecode.encode(args.input, args.debug, args.language, args.max_depth)
     if args.output is None:
         args.output = f"{os.path.splitext(args.input)[0]}.png"
     eQRbytecodeToeQRcode.encode(args.input, args.output)
@@ -62,4 +62,5 @@ if __name__ == '__main__':
     parser.add_argument("-d", "--debug", action='store_true', help="Prints the debug output of parser and scanner")
     parser.add_argument("--no-cleanup", action='store_true', help="Specifies that the temporary files are not to be deleted")
     parser.add_argument("--language", "-l", default="en", help="Specifies the language to use for compression")
+    parser.add_argument("--max-depth", "-m", type=int, default=1, help="DFS branch-and-bound search depth: 0 = greedy only (fastest), N = search depth N")
     main(parser.parse_args())

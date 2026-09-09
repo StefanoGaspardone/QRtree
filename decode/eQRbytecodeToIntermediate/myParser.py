@@ -55,14 +55,10 @@ class Parser:
 
     tokens = Scanner.tokens
 
-    # A program is a list of the encodings of the instruction of QRtree.
-    # The QRtree header here is always the hybrid dictionary command
-    # ("10" selector + lang_id); the external language alphabet, the
-    # local supplemental alphabet, and the fragments are all loaded and
-    # parsed by the scanner (t_HYBRID_HEADER), not by this grammar rule.
+    # A program is a list of the encodings of the instruction
     def p_prog(self,p):
         '''
-        prog : HYBRID_HEADER op_list
+        prog : DICT_HEADER op_list
         '''
         self.output.close()
 

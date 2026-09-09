@@ -17,16 +17,16 @@ class Parser:
     def _extract_program_strings(self, source_text):
         return re.findall(r'"([^"]*)"', source_text)
 
-    # Compress program strings using the hybrid pipeline
-    def encode(self, source_text, language, min_len = 2, max_len = 32, max_dict = 1023):
+    # Compress program strings
+    def encode(self, source_text, language = "en", min_len = 2, max_len = 32, max_dict = 1023, exh_max_depth = 1):
         strings = self._extract_program_strings(source_text)
 
-        result = compress_program_strings(strings, language = language, min_len = min_len, max_len = max_len, max_dict = max_dict)
+        result = compress_program_strings(strings, language = language, min_len = min_len, max_len = max_len, max_dict = max_dict, exh_max_depth = exh_max_depth)
         self.compressed = result
         self.compressed_idx = 0
 
         self.output = open(f"{self.fileName}.bin", "w")
-        self.output.write("10" + result['dict_bits'])
+        self.output.write(result['dict_bits'])
 
         self.parser.parse(source_text)
 
