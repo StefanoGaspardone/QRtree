@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # String decompression
 
-import math
 import os
 import sys
 
@@ -11,10 +10,6 @@ LANGUAGE_IDS = {
 }
 
 ID_TO_LANGUAGE = {v: k for k, v in LANGUAGE_IDS.items()}
-
-
-def needed_bits(n: int) -> int:
-    return 1 if n <= 1 else math.ceil(math.log2(n))
 
 
 def exp_read(bits: str, pos: int, n0: int = 4) -> tuple:
@@ -80,7 +75,7 @@ def huffman_read_symbol(bits: str, pos: int, lookup: dict, max_len: int) -> tupl
 
 
 def read_lang_dict(bits: str, pos: int) -> tuple:
-    """Decode an external language alphabet (A bytes + A+1 lengths, last id = escape, never triggered in modalita' A) + trailing D=0."""
+    """Decode an external language alphabet (A bytes + A+1 lengths, last id = escape) + trailing D=0. The escape id is returned -- in modalita' B it is genuinely used, to fall through to the next language in the chain."""
 
     A, pos = exp_read(bits, pos)
 
@@ -105,11 +100,12 @@ def read_lang_dict(bits: str, pos: int) -> tuple:
         'alphabet': alphabet,
         'lookup': lookup,
         'max_len': max_len,
+        'escape_id': A,
     }, pos
 
 
 def read_supplemental_alphabet(bits: str, pos: int) -> tuple:
-    """Decode the auxiliary alphabet (chars none of the N external languages cover), no escape of its own."""
+    """Decode the auxiliary alphabet (chars none of the N external languages cover), no escape of its own -- it is always the terminal of the chain."""
 
     A, pos = exp_read(bits, pos)
 
@@ -159,19 +155,14 @@ def read_local_alphabet(bits: str, pos: int) -> tuple:
 
 
 def read_char_unified(bits: str, pos: int, mode: int, char_info, suppl_info) -> tuple:
-    """Decode one character. Mode 0: reads the selector_width-bit selector first, then the Huffman code from whichever of the N language trees (or the auxiliary) it points to.
-    Mode 1: no selector, reads the single local tree directly."""
+    """Decode one character. Mode 0 (multilingua, catena di escape): tries langs[0]'s tree; if the decoded symbol is its escape, tries langs[1]; and so on; if the last language's escape triggers too, reads the auxiliary tree (which has no escape of its own). Mode 1 (locale): no chain, reads the single local tree directly."""
 
     if mode == 0:
-        selector_width = char_info['selector_width']
-        langs = char_info['langs']
+        for lang in char_info['langs']:
+            sym, pos = huffman_read_symbol(bits, pos, lang['lookup'], lang['max_len'])
 
-        sel = int(bits[pos:pos + selector_width], 2)
-        pos += selector_width
-
-        if sel < len(langs):
-            sym, pos = huffman_read_symbol(bits, pos, langs[sel]['lookup'], langs[sel]['max_len'])
-            return langs[sel]['alphabet'][sym], pos
+            if sym != lang['escape_id']:
+                return lang['alphabet'][sym], pos
 
         sym, pos = huffman_read_symbol(bits, pos, suppl_info['lookup'], suppl_info['max_len'])
         return suppl_info['alphabet'][sym], pos
@@ -263,7 +254,7 @@ def _load_one_language(lang_id: int, dictionaries_dir: str) -> dict:
 
 
 def load_unified_dictionaries(bits: str, pos: int, dictionaries_dir: str) -> tuple:
-    """Read the 1-bit mode selector and load whatever it points to: bit '0' -> N external language dictionaries (modalita' A, explicit fixed-width selector before every RAW character) + auxiliary; bit '1' -> a full local alphabet. Terminates on any failure."""
+    """Read the 1-bit mode selector and load whatever it points to: bit '0' -> N external language dictionaries in chain order (modalita' B, escape-chain: the order was chosen by the encoder to minimize this specific program's size, not the app's requested order) + auxiliary; bit '1' -> a full local alphabet. Terminates on any failure."""
 
     mode = int(bits[pos])
     pos += 1
@@ -277,9 +268,7 @@ def load_unified_dictionaries(bits: str, pos: int, dictionaries_dir: str) -> tup
             lang_ids.append(lid)
 
         langs = [_load_one_language(lid, dictionaries_dir) for lid in lang_ids]
-
-        selector_width = needed_bits(n_langs + 1)
-        char_info = {'langs': langs, 'selector_width': selector_width}
+        char_info = {'langs': langs}
 
         try:
             suppl_info, pos = read_supplemental_alphabet(bits, pos)
