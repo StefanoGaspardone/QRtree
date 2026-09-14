@@ -1583,115 +1583,20 @@ static void suppl_alphabet_free(SupplAlphabet *sa) {
     sa->codes = NULL;
 }
 
-static SupplAlphabet build_supplemental_alphabet(const StrItem *strs, const int n, const LangAlphabet *lang) {
-    int64_t freq[256] = {0};
-    int present[256] = {0};
-
-    for(int s = 0; s < n; s++) {
-        for(size_t k = 0; k < strs[s].len; k++) {
-            const uint8_t b = strs[s].data[k];
-
-            if(lang->byte_to_id[b] < 0) {
-                freq[b]++;
-                present[b] = 1;
-            }
-        }
-    }
-
-    SupplAlphabet sa = {0};
-    for(int i = 0; i < 256; i++) sa.byte_to_id[i] = -1;
-
-    int A = 0;
-    for(int b = 0; b < 256; b++) {
-        if(present[b]) {
-            sa.alphabet[A] = (uint8_t)b;
-            sa.byte_to_id[b] = A;
-            A++;
-        }
-    }
-    sa.A = A;
-
-    if(A > 0) {
-        int64_t *freq_by_id = (int64_t *)malloc(sizeof(int64_t) * A);
-        for(int i = 0; i < A; i++) freq_by_id[i] = freq[sa.alphabet[i]];
-
-        int *lengths = huffman_len_lengths(freq_by_id, A);
-        sa.codes = canonical_codes(lengths, A);
-
-        free(freq_by_id);
-        free(lengths);
-    }
-
-    return sa;
-}
-
-static void compute_hybrid_char_bit_lengths(const LangAlphabet *lang, const SupplAlphabet *suppl, const int escape_length, int *byte_len_out /* [256] */) {
-    for(int b = 0; b < 256; b++) {
-        if(lang->byte_to_id[b] >= 0) {
-            byte_len_out[b] = lang->codes[lang->byte_to_id[b]].length;
-        } else if(suppl->byte_to_id[b] >= 0) {
-            byte_len_out[b] = escape_length + suppl->codes[suppl->byte_to_id[b]].length;
-        } else {
-            byte_len_out[b] = 0;
-        }
-    }
-}
-
-static void write_hybrid_char_symbol(TextBitWriter *w, const LangAlphabet *lang, const SupplAlphabet *suppl, const uint8_t byte_val) {
-    const int lang_id = lang->byte_to_id[byte_val];
-
-    if(lang_id >= 0) {
-        tbw_push_bits_msb(w, lang->codes[lang_id].code, lang->codes[lang_id].length);
-        return;
-    }
-
-    const HCode *esc = &lang->codes[lang->escape_id];
-    tbw_push_bits_msb(w, esc->code, esc->length);
-
-    const int suppl_id = suppl->byte_to_id[byte_val];
-    tbw_push_bits_msb(w, suppl->codes[suppl_id].code, suppl->codes[suppl_id].length);
-}
-
+/* ============================================================
+ * Multi-lingua (modalita' A) -- l'ausiliario si costruisce controllando
+ * TUTTE le N lingue esterne insieme (build_multilang_dict, piu' avanti),
+ * non una sola: la vecchia build_supplemental_alphabet a singola lingua
+ * e il meccanismo a escape (compute_hybrid_char_bit_lengths,
+ * write_hybrid_char_symbol) non servono piu' -- e' il selettore
+ * esplicito a dire quale albero usare, non un escape interno al singolo
+ * dizionario-lingua.
+ * ============================================================ */
 static void write_supplemental_alphabet_ascii(TextBitWriter *w, const SupplAlphabet *suppl) {
     ref_enc_write(w, suppl->A);
 
     for(int i = 0; i < suppl->A; i++) tbw_push_bits_msb(w, suppl->alphabet[i], 8);
     for(int i = 0; i < suppl->A; i++) tbw_push_bits_msb(w, (uint64_t)suppl->codes[i].length, 4);
-}
-
-static void write_fragments_section_hybrid_ascii(TextBitWriter *w, const LangAlphabet *lang, const SupplAlphabet *suppl, const Dictionary *dict, const int64_t *tok_freqs) {
-    const int D = dict->n;
-    ref_enc_write(w, D);
-
-    for(int i = 0; i < D; i++) {
-        ref_enc_write(w, dict->entries[i].len);
-
-        for(int k = 0; k < dict->entries[i].len; k++) {
-            write_hybrid_char_symbol(w, lang, suppl, dict->entries[i].data[k]);
-        }
-    }
-
-    codec_write_overhead_ascii(ENC_HUFF_LEN, w, tok_freqs, D);
-}
-
-static char *write_seq_hybrid_ascii(const Seq *seq, const LangAlphabet *lang, const SupplAlphabet *suppl, const HCode *tok_codes, int32_t *out_len) {
-    TextBitWriter w;
-    tbw_init(&w, (size_t)seq->len * 4 + 16);
-
-    ref_enc_write(&w, seq->len);
-
-    for(int k = 0; k < seq->len; k++) {
-        if(seq->items[k].type == RAW) {
-            tbw_push_bits_msb(&w, 0, 1);
-            write_hybrid_char_symbol(&w, lang, suppl, (uint8_t)seq->items[k].val);
-        } else {
-            tbw_push_bits_msb(&w, 1, 1);
-            codec_write_symbol_ascii(ENC_HUFF_LEN, &w, seq->items[k].val, tok_codes, 0);
-        }
-    }
-
-    *out_len = (int32_t)w.len;
-    return tbw_finish(&w);
 }
 
 /* ============================================================
@@ -1747,31 +1652,38 @@ static char *write_seq_local_ascii(const Seq *seq, const Alphabet *alph, const H
 }
 
 /* ============================================================
- * Library API -- entry point unico del dialetto.
- *
- * has_lang_dict = 0 -> nessun dizionario-lingua disponibile (ne' quello
- *   richiesto ne' l'inglese di fallback): scrive "1" + alfabeto locale
- *   pieno + frammenti. lang_dict_bits/lang_dict_bits_len/lang_id ignorati.
- * has_lang_dict = 1 -> alfabeto esterno disponibile (richiesto o
- *   fallback inglese, indistintamente da qui): scrive "0" + lang_id +
- *   supplementare (con escape per i non coperti) + frammenti.
- *
- * In entrambi i casi la ricerca frammenti (greedy/DFS, sotto) e'
- * ESATTAMENTE la stessa funzione, che riceve solo un costo-per-byte gia'
- * pronto -- non sa (e non le serve sapere) da quale dei due rami arriva.
+ * Struct risultato condivisa da entrambi gli entry point (locale e
+ * multi-lingua) -- stessa identica forma in entrambi i casi, non serve
+ * duplicarla.
  * ============================================================ */
 typedef struct {
-    char *dict_bits;          /* bit selettore + payload del ramo scelto */
+    char *dict_bits;           /* bit selettore + payload del ramo scelto */
     int32_t dict_bits_len;
-    char **stream_bits;        /* n_strings stringhe ASCII '0'/'1', stesso ordine dell'input */
+    char **stream_bits;         /* n_strings stringhe ASCII '0'/'1', stesso ordine dell'input */
     int32_t *stream_bits_len;
     int32_t n_strings;
-} QRTreeUnifiedResult;
+} QRTreeResult;
 
-QRTreeUnifiedResult *qrtree_compress_program_unified(
+void qrtree_result_free(QRTreeResult *r) {
+    if(!r) return;
+
+    free(r->dict_bits);
+
+    for(int i = 0; i < r->n_strings; i++) free(r->stream_bits[i]);
+    free(r->stream_bits);
+    free(r->stream_bits_len);
+
+    free(r);
+}
+
+/* ============================================================
+ * Library API -- modalita' locale (bit=1): nessun dizionario-lingua
+ * disponibile (lista risolta vuota, ne' le lingue richieste ne'
+ * l'inglese di fallback). Alfabeto costruito interamente dal programma,
+ * nessun overhead esterno.
+ * ============================================================ */
+QRTreeResult *qrtree_compress_program_local(
     const uint8_t **strings, const int32_t *string_lens, const int32_t n_strings,
-    const int32_t has_lang_dict,
-    const char *lang_dict_bits, const int32_t lang_dict_bits_len, const int32_t lang_id,
     const int32_t min_len, const int32_t max_len, const int32_t max_dict,
     const int32_t exh_max_depth, const int32_t nthreads
 ) {
@@ -1787,30 +1699,17 @@ QRTreeUnifiedResult *qrtree_compress_program_unified(
         strs[i].len = (size_t)string_lens[i];
     }
 
+    Alphabet alph;
+    build_alphabet(strs, n_strings, &alph);
+
+    int64_t char_freq_by_id[256];
+    alphabet_char_freq_by_id(&alph, char_freq_by_id);
+
+    int *local_char_lengths_by_id = huffman_len_lengths(char_freq_by_id, alph.A);
+    HCode *local_char_codes = canonical_codes(local_char_lengths_by_id, alph.A);
+
     int char_bit_len_by_byte[256] = {0};
-
-    LangAlphabet lang; memset(&lang, 0, sizeof(lang));
-    SupplAlphabet suppl; memset(&suppl, 0, sizeof(suppl));
-    Alphabet alph; memset(&alph, 0, sizeof(alph));
-    int *local_char_lengths_by_id = NULL;
-    HCode *local_char_codes = NULL;
-
-    if(has_lang_dict) {
-        lang = parse_lang_dict(lang_dict_bits, lang_dict_bits_len);
-        suppl = build_supplemental_alphabet(strs, n_strings, &lang);
-        const int escape_length = lang.codes[lang.escape_id].length;
-        compute_hybrid_char_bit_lengths(&lang, &suppl, escape_length, char_bit_len_by_byte);
-    } else {
-        build_alphabet(strs, n_strings, &alph);
-
-        int64_t char_freq_by_id[256];
-        alphabet_char_freq_by_id(&alph, char_freq_by_id);
-
-        local_char_lengths_by_id = huffman_len_lengths(char_freq_by_id, alph.A);
-        local_char_codes = canonical_codes(local_char_lengths_by_id, alph.A);
-
-        compute_char_bit_lengths(alph.alphabet, alph.A, local_char_lengths_by_id, char_bit_len_by_byte);
-    }
+    compute_char_bit_lengths(alph.alphabet, alph.A, local_char_lengths_by_id, char_bit_len_by_byte);
 
     const int max_depth_is_none = (exh_max_depth < 0);
     const int max_depth = max_depth_is_none ? 0 : exh_max_depth;
@@ -1826,18 +1725,11 @@ QRTreeUnifiedResult *qrtree_compress_program_unified(
     TextBitWriter dict_w;
     tbw_init(&dict_w, 4096);
 
-    if(has_lang_dict) {
-        tbw_push_bits_msb(&dict_w, 0, 1);   /* bit 0: dizionario-lingua esterno */
-        ref_enc_write(&dict_w, lang_id);
-        write_supplemental_alphabet_ascii(&dict_w, &suppl);
-        write_fragments_section_hybrid_ascii(&dict_w, &lang, &suppl, &dictionary, tok_freqs);
-    } else {
-        tbw_push_bits_msb(&dict_w, 1, 1);   /* bit 1: tutto interno */
-        write_local_alphabet_ascii(&dict_w, &alph, local_char_lengths_by_id);
-        write_fragments_section_local_ascii(&dict_w, &alph, local_char_codes, &dictionary, tok_freqs);
-    }
+    tbw_push_bits_msb(&dict_w, 1, 1);   /* bit 1: tutto interno */
+    write_local_alphabet_ascii(&dict_w, &alph, local_char_lengths_by_id);
+    write_fragments_section_local_ascii(&dict_w, &alph, local_char_codes, &dictionary, tok_freqs);
 
-    QRTreeUnifiedResult *out = (QRTreeUnifiedResult *)malloc(sizeof(QRTreeUnifiedResult));
+    QRTreeResult *out = (QRTreeResult *)malloc(sizeof(QRTreeResult));
     out->dict_bits = tbw_finish(&dict_w);
     out->dict_bits_len = (int32_t)dict_w.len;
 
@@ -1846,24 +1738,14 @@ QRTreeUnifiedResult *qrtree_compress_program_unified(
     out->stream_bits_len = (int32_t *)malloc(sizeof(int32_t) * (seqs.n > 0 ? seqs.n : 1));
 
     for(int i = 0; i < seqs.n; i++) {
-        if(has_lang_dict) {
-            out->stream_bits[i] = write_seq_hybrid_ascii(&seqs.seqs[i], &lang, &suppl, tok_codes, &out->stream_bits_len[i]);
-        } else {
-            out->stream_bits[i] = write_seq_local_ascii(&seqs.seqs[i], &alph, local_char_codes, tok_codes, &out->stream_bits_len[i]);
-        }
+        out->stream_bits[i] = write_seq_local_ascii(&seqs.seqs[i], &alph, local_char_codes, tok_codes, &out->stream_bits_len[i]);
     }
 
     free(tok_lengths_by_id);
     free(tok_codes);
     free(tok_freqs);
-
-    if(has_lang_dict) {
-        lang_alphabet_free(&lang);
-        suppl_alphabet_free(&suppl);
-    } else {
-        free(local_char_lengths_by_id);
-        free(local_char_codes);
-    }
+    free(local_char_lengths_by_id);
+    free(local_char_codes);
 
     dict_free(&dictionary);
     seqlist_free(&seqs);
@@ -1875,14 +1757,271 @@ QRTreeUnifiedResult *qrtree_compress_program_unified(
     return out;
 }
 
-void qrtree_compress_program_unified_free(QRTreeUnifiedResult *r) {
-    if(!r) return;
+/* ============================================================
+ * MODALITA' A -- selettore esplicito a larghezza fissa, N dizionari
+ * di lingua contemporaneamente attivi (invece di uno solo con escape).
+ *
+ * Per ogni carattere RAW, prima del suo codice, viene scritto un
+ * selettore a ceil(log2(n_langs+1)) bit: valori 0..n_langs-1 scelgono
+ * una delle lingue esterne (nell'ordine gia' risolto/deduplicato da
+ * Python), il valore n_langs sceglie l'ausiliario. Se un byte e'
+ * coperto da piu' di una lingua, si sceglie quella col codice piu'
+ * corto -- decisione presa UNA VOLTA SOLA per ciascuno dei 256 byte
+ * possibili in build_multilang_dict, e riusata identica sia per il
+ * costo-per-byte che guida la ricerca frammenti sia per la scrittura
+ * vera, cosi' le due fasi non possono mai disallinearsi tra loro.
+ *
+ * L'ausiliario copre solo i byte non coperti da NESSUNA delle n_langs
+ * lingue esterne (non "dalla prima", come nell'escape singolo -- qui
+ * non c'e' una lingua "prima delle altre").
+ *
+ * Il meccanismo di escape interno a ciascun singolo dizionario-lingua
+ * (build_language_dict.py, invariato) diventa qui superfluo -- e'
+ * il selettore a dire gia' quale albero usare -- ma non viene rimosso
+ * dal formato .bin: semplicemente il suo simbolo escape non viene mai
+ * scritto in questa modalita'.
+ * ============================================================ */
+typedef struct {
+    int n_langs;
+    LangAlphabet *langs;        /* array di n_langs, parsati indipendentemente */
+    SupplAlphabet suppl;        /* il tree "n_langs": copre cio' che nessuna lingua copre */
+    int selector_width;         /* ceil(log2(n_langs+1)) bit prima di ogni carattere RAW */
+    int8_t byte_selector[256];  /* quale tree vince per questo byte: 0..n_langs-1 = lingua esterna, n_langs = ausiliario, -1 = byte mai usato dal programma */
+} MultiLangDict;
 
-    free(r->dict_bits);
+static void multilang_free(MultiLangDict *md) {
+    for(int i = 0; i < md->n_langs; i++) lang_alphabet_free(&md->langs[i]);
+    free(md->langs);
+    suppl_alphabet_free(&md->suppl);
+}
 
-    for(int i = 0; i < r->n_strings; i++) free(r->stream_bits[i]);
-    free(r->stream_bits);
-    free(r->stream_bits_len);
+static MultiLangDict build_multilang_dict(const StrItem *strs, const int n_strings,
+                                           const char **lang_dict_bits_arr, const int32_t *lang_dict_bits_len_arr,
+                                           const int n_langs) {
+    MultiLangDict md = {0};
+    md.n_langs = n_langs;
+    md.langs = (LangAlphabet *)malloc(sizeof(LangAlphabet) * (n_langs > 0 ? n_langs : 1));
 
-    free(r);
+    for(int i = 0; i < n_langs; i++) {
+        md.langs[i] = parse_lang_dict(lang_dict_bits_arr[i], lang_dict_bits_len_arr[i]);
+    }
+
+    /* ausiliario: frequenze reali sui byte non coperti da NESSUNA lingua esterna */
+    int64_t freq[256] = {0};
+    int present[256] = {0};
+
+    for(int s = 0; s < n_strings; s++) {
+        for(size_t k = 0; k < strs[s].len; k++) {
+            const uint8_t b = strs[s].data[k];
+            int covered = 0;
+
+            for(int L = 0; L < n_langs; L++) {
+                if(md.langs[L].byte_to_id[b] >= 0) { covered = 1; break; }
+            }
+
+            if(!covered) { freq[b]++; present[b] = 1; }
+        }
+    }
+
+    SupplAlphabet sa = {0};
+    for(int i = 0; i < 256; i++) sa.byte_to_id[i] = -1;
+
+    int A = 0;
+    for(int b = 0; b < 256; b++) {
+        if(present[b]) { sa.alphabet[A] = (uint8_t)b; sa.byte_to_id[b] = A; A++; }
+    }
+    sa.A = A;
+
+    if(A > 0) {
+        int64_t *freq_by_id = (int64_t *)malloc(sizeof(int64_t) * A);
+        for(int i = 0; i < A; i++) freq_by_id[i] = freq[sa.alphabet[i]];
+
+        int *lengths = huffman_len_lengths(freq_by_id, A);
+        sa.codes = canonical_codes(lengths, A);
+
+        free(freq_by_id); free(lengths);
+    }
+    md.suppl = sa;
+
+    md.selector_width = needed_bits(n_langs + 1);
+
+    /* scelta a costo minimo per ciascuno dei 256 byte, una volta sola */
+    for(int b = 0; b < 256; b++) {
+        int best_sel = -1;
+        int best_len = -1;
+
+        for(int L = 0; L < n_langs; L++) {
+            const int id = md.langs[L].byte_to_id[b];
+            if(id < 0) continue;
+
+            const int len = md.langs[L].codes[id].length;
+            if(best_sel < 0 || len < best_len) { best_sel = L; best_len = len; }
+        }
+
+        if(md.suppl.byte_to_id[b] >= 0) {
+            const int len = md.suppl.codes[md.suppl.byte_to_id[b]].length;
+            if(best_sel < 0 || len < best_len) { best_sel = n_langs; best_len = len; }
+        }
+
+        md.byte_selector[b] = (int8_t)best_sel;
+    }
+
+    return md;
+}
+
+static void compute_multilang_char_bit_lengths(const MultiLangDict *md, int *byte_len_out /* [256] */) {
+    for(int b = 0; b < 256; b++) {
+        const int sel = md->byte_selector[b];
+
+        if(sel < 0) { byte_len_out[b] = 0; continue; }
+
+        int code_len;
+        if(sel < md->n_langs) {
+            const int id = md->langs[sel].byte_to_id[b];
+            code_len = md->langs[sel].codes[id].length;
+        } else {
+            const int id = md->suppl.byte_to_id[b];
+            code_len = md->suppl.codes[id].length;
+        }
+
+        byte_len_out[b] = md->selector_width + code_len;
+    }
+}
+
+static void write_multilang_char_symbol(TextBitWriter *w, const MultiLangDict *md, const uint8_t byte_val) {
+    const int sel = md->byte_selector[byte_val];
+
+    tbw_push_bits_msb(w, (uint64_t)sel, md->selector_width);
+
+    if(sel < md->n_langs) {
+        const int id = md->langs[sel].byte_to_id[byte_val];
+        const HCode *c = &md->langs[sel].codes[id];
+        tbw_push_bits_msb(w, c->code, c->length);
+    } else {
+        const int id = md->suppl.byte_to_id[byte_val];
+        const HCode *c = &md->suppl.codes[id];
+        tbw_push_bits_msb(w, c->code, c->length);
+    }
+}
+
+static void write_multilang_header_ascii(TextBitWriter *w, const int32_t *lang_ids, const int n_langs, const SupplAlphabet *suppl) {
+    ref_enc_write(w, n_langs);
+    for(int i = 0; i < n_langs; i++) ref_enc_write(w, lang_ids[i]);
+    write_supplemental_alphabet_ascii(w, suppl);
+}
+
+static void write_fragments_section_multilang_ascii(TextBitWriter *w, const MultiLangDict *md, const Dictionary *dict, const int64_t *tok_freqs) {
+    const int D = dict->n;
+    ref_enc_write(w, D);
+
+    for(int i = 0; i < D; i++) {
+        ref_enc_write(w, dict->entries[i].len);
+
+        for(int k = 0; k < dict->entries[i].len; k++) {
+            write_multilang_char_symbol(w, md, dict->entries[i].data[k]);
+        }
+    }
+
+    codec_write_overhead_ascii(ENC_HUFF_LEN, w, tok_freqs, D);
+}
+
+static char *write_seq_multilang_ascii(const Seq *seq, const MultiLangDict *md, const HCode *tok_codes, int32_t *out_len) {
+    TextBitWriter w;
+    tbw_init(&w, (size_t)seq->len * 4 + 16);
+
+    ref_enc_write(&w, seq->len);
+
+    for(int k = 0; k < seq->len; k++) {
+        if(seq->items[k].type == RAW) {
+            tbw_push_bits_msb(&w, 0, 1);
+            write_multilang_char_symbol(&w, md, (uint8_t)seq->items[k].val);
+        } else {
+            tbw_push_bits_msb(&w, 1, 1);
+            codec_write_symbol_ascii(ENC_HUFF_LEN, &w, seq->items[k].val, tok_codes, 0);
+        }
+    }
+
+    *out_len = (int32_t)w.len;
+    return tbw_finish(&w);
+}
+
+/* ============================================================
+ * Library API -- modalita' A, N dizionari di lingua.
+ *
+ * Precondizione: n_langs >= 1 (lista gia' risolta e deduplicata da
+ * Python -- se e' vuota, Python deve chiamare invece
+ * qrtree_compress_program_local, il ramo "tutto interno").
+ *
+ * Scrive lo stesso bit "0" di testa del formato unificato (esterno
+ * presente), cosi' il payload che produce resta un'istanza valida
+ * dello stesso formato di alto livello, condiviso col ramo locale
+ * (bit "1") tramite lo stesso QRTreeResult.
+ * ============================================================ */
+QRTreeResult *qrtree_compress_program_multilang(
+    const uint8_t **strings, const int32_t *string_lens, const int32_t n_strings,
+    const char **lang_dict_bits_arr, const int32_t *lang_dict_bits_len_arr, const int32_t *lang_ids, const int32_t n_langs,
+    const int32_t min_len, const int32_t max_len, const int32_t max_dict,
+    const int32_t exh_max_depth, const int32_t nthreads
+) {
+    if(nthreads > 0) g_nthreads = nthreads;
+
+    ThreadPool pool;
+    pool_init(&pool, g_nthreads);
+    g_pool = &pool;
+
+    StrItem *strs = (StrItem *)malloc(sizeof(StrItem) * (n_strings > 0 ? n_strings : 1));
+    for(int i = 0; i < n_strings; i++) {
+        strs[i].data = (uint8_t *)strings[i];
+        strs[i].len = (size_t)string_lens[i];
+    }
+
+    MultiLangDict md = build_multilang_dict(strs, n_strings, lang_dict_bits_arr, lang_dict_bits_len_arr, n_langs);
+
+    int char_bit_len_by_byte[256] = {0};
+    compute_multilang_char_bit_lengths(&md, char_bit_len_by_byte);
+
+    const int max_depth_is_none = (exh_max_depth < 0);
+    const int max_depth = max_depth_is_none ? 0 : exh_max_depth;
+
+    Dictionary dictionary; SeqList seqs;
+    exhaustive_build(strs, n_strings, char_bit_len_by_byte, ENC_HUFF_LEN, min_len, max_len, max_dict,
+                      max_depth, max_depth_is_none, &dictionary, &seqs);
+
+    int64_t *tok_freqs = count_tok_freqs(&seqs, dictionary.n);
+    int *tok_lengths_by_id = dictionary.n > 0 ? huffman_len_lengths(tok_freqs, dictionary.n) : NULL;
+    HCode *tok_codes = dictionary.n > 0 ? canonical_codes(tok_lengths_by_id, dictionary.n) : NULL;
+
+    TextBitWriter dict_w;
+    tbw_init(&dict_w, 4096);
+
+    tbw_push_bits_msb(&dict_w, 0, 1);   /* bit 0: esterno presente, stesso significato di prima */
+    write_multilang_header_ascii(&dict_w, lang_ids, n_langs, &md.suppl);
+    write_fragments_section_multilang_ascii(&dict_w, &md, &dictionary, tok_freqs);
+
+    QRTreeResult *out = (QRTreeResult *)malloc(sizeof(QRTreeResult));
+    out->dict_bits = tbw_finish(&dict_w);
+    out->dict_bits_len = (int32_t)dict_w.len;
+
+    out->n_strings = seqs.n;
+    out->stream_bits = (char **)malloc(sizeof(char *) * (seqs.n > 0 ? seqs.n : 1));
+    out->stream_bits_len = (int32_t *)malloc(sizeof(int32_t) * (seqs.n > 0 ? seqs.n : 1));
+
+    for(int i = 0; i < seqs.n; i++) {
+        out->stream_bits[i] = write_seq_multilang_ascii(&seqs.seqs[i], &md, tok_codes, &out->stream_bits_len[i]);
+    }
+
+    free(tok_lengths_by_id);
+    free(tok_codes);
+    free(tok_freqs);
+
+    multilang_free(&md);
+
+    dict_free(&dictionary);
+    seqlist_free(&seqs);
+    free(strs);
+
+    g_pool = NULL;
+    pool_shutdown(&pool);
+
+    return out;
 }

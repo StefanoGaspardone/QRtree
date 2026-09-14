@@ -58,7 +58,7 @@ def _find_library_path():
     )
 
 
-class _QRTreeUnifiedResult(ctypes.Structure):
+class _QRTreeResult(ctypes.Structure):
     _fields_ = [
         ("dict_bits", ctypes.c_char_p),
         ("dict_bits_len", ctypes.c_int32),
@@ -70,23 +70,29 @@ class _QRTreeUnifiedResult(ctypes.Structure):
 
 _lib = ctypes.CDLL(_find_library_path())
 
-_lib.qrtree_compress_program_unified.restype = ctypes.POINTER(_QRTreeUnifiedResult)
-_lib.qrtree_compress_program_unified.argtypes = [
+_lib.qrtree_compress_program_local.restype = ctypes.POINTER(_QRTreeResult)
+_lib.qrtree_compress_program_local.argtypes = [
     ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_int32), ctypes.c_int32,
-    ctypes.c_int32,
-    ctypes.c_char_p, ctypes.c_int32, ctypes.c_int32,
     ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
 ]
-_lib.qrtree_compress_program_unified_free.argtypes = [ctypes.POINTER(_QRTreeUnifiedResult)]
+
+_lib.qrtree_compress_program_multilang.restype = ctypes.POINTER(_QRTreeResult)
+_lib.qrtree_compress_program_multilang.argtypes = [
+    ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_int32), ctypes.c_int32,
+    ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(ctypes.c_int32), ctypes.c_int32,
+    ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
+]
+
+_lib.qrtree_result_free.argtypes = [ctypes.POINTER(_QRTreeResult)]
 
 
 def _language_dict_path(language: str) -> str:
     return os.path.join(LANGUAGES_DIR, f"{language}.bin")
 
 
-def _resolve_language(language: str):
-    """Resolves which language dictionary to actually use for the compression"""
-    
+def _resolve_single_language(language: str):
+    """Resolves ONE requested language, falling back to FALLBACK_LANGUAGE if missing. Returns the resolved code, or None if neither is available."""
+
     if language in LANGUAGE_IDS and os.path.exists(_language_dict_path(language)):
         return language
 
@@ -96,67 +102,89 @@ def _resolve_language(language: str):
         print(f"note: dictionary for language '{language}' not found ({_language_dict_path(language)})")
 
     if language != FALLBACK_LANGUAGE and FALLBACK_LANGUAGE in LANGUAGE_IDS and os.path.exists(_language_dict_path(FALLBACK_LANGUAGE)):
-        print(f"note: falling back to '{FALLBACK_LANGUAGE}'")
+        print(f"note: falling back to '{FALLBACK_LANGUAGE}' for '{language}'")
         return FALLBACK_LANGUAGE
 
-    print("note: no language dictionary available (requested and fallback both missing), falling back to fully local mode (no external alphabet)")
+    print(f"note: no dictionary available for '{language}' (requested and fallback both missing), dropping it")
     return None
 
 
-def _load_language_dict(language: str):
-    """Resolves a language code and loads its dictionary."""
-    
-    resolved = _resolve_language(language)
-    if resolved is None:
-        return None
- 
-    lang_id = LANGUAGE_IDS[resolved]
- 
-    with open(_language_dict_path(resolved), "r") as f:
-        lang_bits = f.read().strip()
- 
-    return lang_id, lang_bits
+def _resolve_language_list(languages: list) -> list:
+    """Resolves each requested language independently (with fallback), then deduplicates -- the fallback language never appears twice even if several requested languages collapse onto it. May return an empty list."""
+
+    resolved = []
+    for language in languages:
+        r = _resolve_single_language(language)
+
+        if r is not None and r not in resolved:
+            resolved.append(r)
+
+    if not resolved:
+        print("note: no language dictionary available at all, falling back to fully local mode (no external alphabet)")
+
+    return resolved
 
 
-def compress_program_strings(strings: list, language: str = "en", min_len: int = MIN_LEN_DEFAULT, max_len: int = MAX_LEN_DEFAULT, max_dict: int = MAX_DICT_DEFAULT, exh_max_depth: int = EXH_MAX_DEPTH_DEFAULT, nthreads: int = 0) -> dict:
+def _load_language_dicts(languages: list) -> list:
+    """Resolves and loads dictionaries for a list of requested languages. Returns a list of (lang_id, dict_bits) tuples, possibly empty."""
+
+    resolved = _resolve_language_list(languages)
+
+    loaded = []
+    for language in resolved:
+        lang_id = LANGUAGE_IDS[language]
+
+        with open(_language_dict_path(language), "r") as f:
+            lang_bits = f.read().strip()
+
+        loaded.append((lang_id, lang_bits))
+
+    return loaded
+
+
+def compress_program_strings(strings: list, languages: list | None = None, min_len: int = MIN_LEN_DEFAULT, max_len: int = MAX_LEN_DEFAULT, max_dict: int = MAX_DICT_DEFAULT, exh_max_depth: int = EXH_MAX_DEPTH_DEFAULT, nthreads: int = 0) -> dict:
     """Entry point called by myParser.encode(). Runs the whole unified pipeline in C"""
     
+    if languages is None:
+        languages = ["en"]
+
     if nthreads == 0:
         nthreads = os.cpu_count() or 1
 
-    lang_dict = _load_language_dict(language)
-    has_lang_dict = lang_dict is not None
-
-    if lang_dict is not None:
-        lang_id, lang_bits = lang_dict
-        lang_bits_bytes = lang_bits.encode('ascii')
-        lang_dict_bits_arg = lang_bits_bytes
-        lang_dict_bits_len_arg = len(lang_bits_bytes)
-        lang_id_arg = lang_id
-    else:
-        lang_dict_bits_arg = None
-        lang_dict_bits_len_arg = 0
-        lang_id_arg = 0
-
     byte_strings = [s.encode('utf-8') for s in strings]
     n = len(byte_strings)
- 
+
     arr_ptrs = (ctypes.c_char_p * n)(*byte_strings)
     arr_lens = (ctypes.c_int32 * n)(*[len(b) for b in byte_strings])
- 
-    res_ptr = _lib.qrtree_compress_program_unified(
-        arr_ptrs, arr_lens, n,
-        int(has_lang_dict),
-        lang_dict_bits_arg, lang_dict_bits_len_arg, lang_id_arg,
-        min_len, max_len, max_dict, exh_max_depth, nthreads,
-    )
+
+    loaded = _load_language_dicts(languages)
+
+    if loaded:
+        n_langs = len(loaded)
+        lang_bufs = [bits.encode('ascii') for _, bits in loaded]
+
+        lang_arr = (ctypes.c_char_p * n_langs)(*lang_bufs)
+        lang_lens = (ctypes.c_int32 * n_langs)(*[len(b) for b in lang_bufs])
+        lang_ids_arr = (ctypes.c_int32 * n_langs)(*[lid for lid, _ in loaded])
+
+        res_ptr = _lib.qrtree_compress_program_multilang(
+            arr_ptrs, arr_lens, n,
+            lang_arr, lang_lens, lang_ids_arr, n_langs,
+            min_len, max_len, max_dict, exh_max_depth, nthreads,
+        )
+    else:
+        res_ptr = _lib.qrtree_compress_program_local(
+            arr_ptrs, arr_lens, n,
+            min_len, max_len, max_dict, exh_max_depth, nthreads,
+        )
+
     res = res_ptr.contents
- 
+
     dict_bits = res.dict_bits.decode('ascii')
     stream_bits = [res.stream_bits[i].decode('ascii') for i in range(res.n_strings)]
- 
-    _lib.qrtree_compress_program_unified_free(res_ptr)
- 
+
+    _lib.qrtree_result_free(res_ptr)
+
     return {
         'dict_bits': dict_bits,
         'stream_bits': stream_bits,

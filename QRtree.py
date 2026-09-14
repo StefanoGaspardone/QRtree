@@ -31,7 +31,7 @@ def main(args):
     
 def main_encode(args):
     HighLevelToIntermediate.encode(args.input, args.debug)
-    IntermediateToeQRbytecode.encode(args.input, args.debug, args.language, args.max_depth)
+    IntermediateToeQRbytecode.encode(args.input, args.debug, args.languages, args.max_depth)
     if args.output is None:
         args.output = f"{os.path.splitext(args.input)[0]}.png"
     eQRbytecodeToeQRcode.encode(args.input, args.output)
@@ -54,6 +54,14 @@ def main_decode(args):
     # HTML page automatically opens on browser
     webbrowser.open_new(f"file://{os.path.realpath(args.output)}")
 
+def _parse_languages(value):
+    languages = [l.strip() for l in value.split(",") if l.strip()]
+
+    if not languages:
+        raise argparse.ArgumentTypeError("--languages/-l cannot be empty")
+
+    return languages
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="")
     parser.add_argument("type", choices=["encode", "decode"], help="Indicates the type of action")
@@ -61,6 +69,6 @@ if __name__ == '__main__':
     parser.add_argument("-o", "--output", type=str, nargs='?', help="The optional output file")
     parser.add_argument("-d", "--debug", action='store_true', help="Prints the debug output of parser and scanner")
     parser.add_argument("--no-cleanup", action='store_true', help="Specifies that the temporary files are not to be deleted")
-    parser.add_argument("--language", "-l", default="en", help="Specifies the language to use for compression")
+    parser.add_argument("--languages", "-l", type=_parse_languages, default=["en"], help="Comma-separated list of languages to use for compression, in priority order (e.g. 'it,en')")
     parser.add_argument("--max-depth", "-m", type=int, default=1, help="DFS branch-and-bound search depth: 0 = greedy only (fastest), N = search depth N")
     main(parser.parse_args())

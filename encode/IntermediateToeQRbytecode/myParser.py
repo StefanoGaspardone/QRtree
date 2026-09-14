@@ -18,10 +18,10 @@ class Parser:
         return re.findall(r'"([^"]*)"', source_text)
 
     # Compress program strings
-    def encode(self, source_text, language = "en", min_len = 2, max_len = 32, max_dict = 1023, exh_max_depth = 1):
+    def encode(self, source_text, languages = None, min_len = 2, max_len = 32, max_dict = 1023, exh_max_depth = 1):
         strings = self._extract_program_strings(source_text)
 
-        result = compress_program_strings(strings, language = language, min_len = min_len, max_len = max_len, max_dict = max_dict, exh_max_depth = exh_max_depth)
+        result = compress_program_strings(strings, languages = languages, min_len = min_len, max_len = max_len, max_dict = max_dict, exh_max_depth = exh_max_depth)
         self.compressed = result
         self.compressed_idx = 0
 
