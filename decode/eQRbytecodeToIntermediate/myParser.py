@@ -195,7 +195,6 @@ class Parser:
         constant : marker4 COMPRESSED_STRING
         '''
         
-        # COMPRESSED_STRING arrives already decoded by the scanner.
         p[0] = p[2]
 
     def p_marker4(self, p):

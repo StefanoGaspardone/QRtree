@@ -6,6 +6,7 @@
 # gcc -O3 -fPIC -shared -pthread -o libc2.dylib c2_exhaustive.c -lm
 
 import ctypes
+import importlib.util
 import os
 import platform
 
@@ -17,15 +18,33 @@ MAX_DICT_DEFAULT = 1023
 
 FALLBACK_LANGUAGE = "en"
 
-LANGUAGE_IDS = {
-    "en": 0,
-    "it": 1,
-    # dictionaries/languages/<lang>.bin
-}
-
 _HERE = os.path.dirname(os.path.abspath(__file__))
 DICTIONARIES_DIR = os.path.normpath(os.path.join(_HERE, "..", "..", "dictionaries"))
-LANGUAGES_DIR = os.path.join(DICTIONARIES_DIR, "languages")
+LANGUAGES_DIR = DICTIONARIES_DIR
+
+
+def _load_language_ids() -> dict:
+    """Loads the single shared LANGUAGE_IDS mapping from dictionaries/lang_ids.py"""
+
+    path = os.path.join(DICTIONARIES_DIR, "lang_ids.py")
+
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"Shared language id mapping not found: {path}. "
+            f"This file is the single source of truth for LANGUAGE_IDS, shared with decompression.py."
+        )
+
+    spec = importlib.util.spec_from_file_location("qrtree_lang_ids", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load module spec from {path}")
+
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    return mod.LANGUAGE_IDS
+
+
+LANGUAGE_IDS = _load_language_ids()
 
 
 def _find_library_path():
@@ -144,7 +163,7 @@ def _load_language_dicts(languages: list) -> list:
 
 def compress_program_strings(strings: list, languages: list | None = None, min_len: int = MIN_LEN_DEFAULT, max_len: int = MAX_LEN_DEFAULT, max_dict: int = MAX_DICT_DEFAULT, exh_max_depth: int = EXH_MAX_DEPTH_DEFAULT, nthreads: int = 0) -> dict:
     """Entry point called by myParser.encode(). Runs the whole unified pipeline in C"""
-    
+
     if languages is None:
         languages = ["en"]
 

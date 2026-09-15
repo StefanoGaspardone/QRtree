@@ -1,14 +1,36 @@
 #!/usr/bin/env python3
 # String decompression
 
+import importlib.util
 import os
 import sys
 
-LANGUAGE_IDS = {
-    "en": 0,
-    "it": 1,
-}
+_HERE = os.path.dirname(os.path.abspath(__file__))
+DICTIONARIES_DIR = os.path.normpath(os.path.join(_HERE, "..", "..", "dictionaries"))
 
+
+def _load_language_ids() -> dict:
+    """Loads the single shared LANGUAGE_IDS mapping from dictionaries/lang_ids.py"""
+
+    path = os.path.join(DICTIONARIES_DIR, "lang_ids.py")
+
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"Shared language id mapping not found: {path}. "
+            f"This file is the single source of truth for LANGUAGE_IDS, shared with compression.py."
+        )
+
+    spec = importlib.util.spec_from_file_location("qrtree_lang_ids", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load module spec from {path}")
+
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    return mod.LANGUAGE_IDS
+
+
+LANGUAGE_IDS = _load_language_ids()
 ID_TO_LANGUAGE = {v: k for k, v in LANGUAGE_IDS.items()}
 
 
@@ -228,7 +250,7 @@ def _load_one_language(lang_id: int, dictionaries_dir: str) -> dict:
         print(f"ERROR: unknown lang_id {lang_id} (no entry in ID_TO_LANGUAGE). Known ids: {sorted(ID_TO_LANGUAGE)}")
         sys.exit(1)
 
-    dict_path = os.path.join(dictionaries_dir, "languages", f"{language}.bin")
+    dict_path = os.path.join(dictionaries_dir, f"{language}.bin")
 
     try:
         with open(dict_path, "r") as dict_file:
