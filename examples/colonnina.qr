@@ -1,0 +1,62 @@
+(0) input "Quale spia è accesa?"
+(1) if "Spia di stato" (7)
+(2) if "Spia di errore" (26)
+(3) if "Spia di rete" (34)
+(4) if "Spia connettore" (42)
+(5) if "Spia potenza disponibile" (52)
+(6) goto (62)
+(7) print "Stato operativo della colonnina"
+(8) input "Che colore?"
+(9) if "Verde fisso" (14)
+(10) if "Verde lampeggiante" (16)
+(11) if "Arancione lampeggiante" (23)
+(12) if "Spenta" (24)
+(13) goto (25)
+(14) printex "Ricarica in corso, tutto regolare"
+(15) goto (25)
+(16) input "A che intervallo lampeggia?"
+(17) if "Intervallo di 500 ms" (20)
+(18) if "Intervallo di 250 ms" (22)
+(19) goto (23)
+(20) printex "In attesa di autenticazione"
+(21) goto (23)
+(22) printex "Ricarica in corso a potenza ridotta"
+(23) printex "Inizializzazione in corso"
+(24) printex "Colonnina in standby"
+(25) goto (62)
+(26) print "Stato di errore"
+(27) input "Che colore?"
+(28) if "Rossa fissa" (30)
+(29) goto (31)
+(30) printex "Errore critico, contattare assistenza"
+(31) if "Rossa lampeggiante" (33)
+(32) goto (34)
+(33) printex "Sovratemperatura del connettore"
+(34) print "Stato della connessione di rete"
+(35) input "Che colore?"
+(36) if "Accesa" (39)
+(37) if "Spenta" (41)
+(38) goto (42)
+(39) printex "Colonnina connessa al server di gestione"
+(40) goto (42)
+(41) printex "Colonnina non raggiungibile dal server"
+(42) print "Stato del blocco connettore"
+(43) input "Che colore?"
+(44) if "Blu fissa" (48)
+(45) if "Blu lampeggiante" (50)
+(46) if "Spenta" (51)
+(47) goto (52)
+(48) printex "Connettore bloccato e ricarica autorizzata"
+(49) goto (52)
+(50) printex "Sblocco del connettore in corso"
+(51) printex "Nessun connettore inserito"
+(52) print "Stato della potenza disponibile in rete"
+(53) input "Che colore?"
+(54) if "Verde" (58)
+(55) if "Gialla" (60)
+(56) if "Rossa" (61)
+(57) goto (62)
+(58) printex "Piena potenza disponibile, 22 kW"
+(59) goto (62)
+(60) printex "Potenza limitata dal gestore, 11 kW"
+(61) printex "Potenza minima garantita, 3.7 kW"

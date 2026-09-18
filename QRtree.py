@@ -9,7 +9,6 @@
 # S. Scanzio, M. Rosani, and M. Scamuzzi, “QRtree software,” GitHub. [Online]. Available: https://github.com/eQR-code/QRtree
 ############################################################################################################################
 
-
 import argparse
 import os
 import webbrowser
@@ -42,7 +41,10 @@ def main_encode(args):
 
 def main_decode(args):
     eQRcodeToeQRbytecode.decode(args.input)
-    eQRbytecodeToIntermediate.decode(args.input, args.debug)
+    
+    # Passa args.debug sia per il debug log del parser che per generare l'immagine AST
+    eQRbytecodeToIntermediate.decode(args.input, debug=args.debug, generate_image=args.debug)
+    
     if args.output is None:
         args.output = f"{os.path.splitext(args.input)[0]}.html"
     IntermediateToHTML.decode(args.input, args.output, args.debug)
@@ -63,12 +65,13 @@ def _parse_languages(value):
     return languages
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="")
+    parser = argparse.ArgumentParser(description="QRtree Software CLI")
     parser.add_argument("type", choices=["encode", "decode"], help="Indicates the type of action")
     parser.add_argument("input", type=str, help="The input file to process")
     parser.add_argument("-o", "--output", type=str, nargs='?', help="The optional output file")
-    parser.add_argument("-d", "--debug", action='store_true', help="Prints the debug output of parser and scanner")
+    parser.add_argument("-d", "--debug", action='store_true', help="Prints debug output and generates AST parse tree image")
     parser.add_argument("--no-cleanup", action='store_true', help="Specifies that the temporary files are not to be deleted")
     parser.add_argument("--languages", "-l", type=_parse_languages, default=["en"], help="Comma-separated list of languages to use for compression, in priority order (e.g. 'it,en')")
     parser.add_argument("--max-depth", "-m", type=int, default=1, help="DFS branch-and-bound search depth: 0 = greedy only (fastest), N = search depth N")
+    
     main(parser.parse_args())
