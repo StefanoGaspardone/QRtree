@@ -9,6 +9,7 @@ import ctypes
 import importlib.util
 import os
 import platform
+import urllib.request
 
 EXH_MAX_DEPTH_DEFAULT = 1
 
@@ -17,34 +18,34 @@ MAX_LEN_DEFAULT = 32
 MAX_DICT_DEFAULT = 1023
 
 FALLBACK_LANGUAGE = "en"
+FETCH_TIMEOUT_SECONDS = 5
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 DICTIONARIES_DIR = os.path.normpath(os.path.join(_HERE, "..", "..", "dictionaries"))
 LANGUAGES_DIR = DICTIONARIES_DIR
 
 
-def _load_language_ids() -> dict:
-    """Loads the single shared LANGUAGE_IDS mapping from dictionaries/lang_ids.py"""
-
+def _load_shared_lang_module():
     path = os.path.join(DICTIONARIES_DIR, "lang_ids.py")
 
     if not os.path.exists(path):
-        raise FileNotFoundError(
-            f"Shared language id mapping not found: {path}. "
-            f"This file is the single source of truth for LANGUAGE_IDS, shared with decompression.py."
-        )
+        raise FileNotFoundError(f"Shared language module not found: {path}. This file is the single source of truth for LANGUAGE_IDS, LANGUAGE_URLS and the dictionary fingerprint, shared with decompression.py.")
 
     spec = importlib.util.spec_from_file_location("qrtree_lang_ids", path)
+
     if spec is None or spec.loader is None:
-        raise ImportError(f"Could not load module spec from {path}")
+        raise ImportError(f"Could not load module spec for {path}")
 
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
-    return mod.LANGUAGE_IDS
+    return mod
 
 
-LANGUAGE_IDS = _load_language_ids()
+_lang_module = _load_shared_lang_module()
+LANGUAGE_IDS = _lang_module.LANGUAGE_IDS
+LANGUAGE_URLS = _lang_module.LANGUAGE_URLS
+compute_fingerprint = _lang_module.compute_fingerprint
 
 
 def _find_library_path():
@@ -98,7 +99,7 @@ _lib.qrtree_compress_program_local.argtypes = [
 _lib.qrtree_compress_program_multilang.restype = ctypes.POINTER(_QRTreeResult)
 _lib.qrtree_compress_program_multilang.argtypes = [
     ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_int32), ctypes.c_int32,
-    ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(ctypes.c_int32), ctypes.c_int32,
+    ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(ctypes.c_int32), ctypes.c_int32,
     ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
 ]
 
@@ -109,34 +110,103 @@ def _language_dict_path(language: str) -> str:
     return os.path.join(LANGUAGES_DIR, f"{language}.bin")
 
 
-def _resolve_single_language(language: str):
-    """Resolves ONE requested language, falling back to FALLBACK_LANGUAGE if missing. Returns the resolved code, or None if neither is available."""
+def _try_fetch_language_dict(language: str, url: str):
+    """Tries to fetch a language dictionary from its configured URL.
+    Returns the validated bitstring content, or None on any failure (network, timeout, invalid content)."""
 
-    if language in LANGUAGE_IDS and os.path.exists(_language_dict_path(language)):
-        return language
+    try:
+        with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT_SECONDS) as response:
+            raw = response.read()
+    except OSError as e:
+        print(f"note: fetch failed for '{language}' from {url}: {e}")
+        return None
+
+    try:
+        lang_bits = raw.decode('ascii').strip()
+    except UnicodeDecodeError:
+        print(f"note: fetched content for '{language}' from {url} is not valid ASCII, discarding")
+        return None
+
+    if not lang_bits or any(c not in "01" for c in lang_bits):
+        print(f"note: fetched content for '{language}' from {url} is not a valid '0'/'1' bitstring, discarding")
+        return None
+
+    print(f"note: fetched '{language}' from {url} ({len(lang_bits)} bit)")
+    return lang_bits
+
+
+def _resolve_and_load_single(language: str):
+    """Resolves and loads the content for ONE specific language code (no fallback): tries its URL first if configured, falls back to the local cache.
+    Returns the bitstring content, or None if neither is available."""
+
+    if language not in LANGUAGE_IDS:
+        return None
+
+    url = LANGUAGE_URLS.get(language)
+
+    if url:
+        fetched = _try_fetch_language_dict(language, url)
+
+        if fetched is not None:
+            with open(_language_dict_path(language), "w") as f:
+                f.write(fetched)
+
+            print(f"note: saved fetched dictionary for '{language}' to local cache ({_language_dict_path(language)})")
+            return fetched
+
+    dict_path = _language_dict_path(language)
+
+    if os.path.exists(dict_path):
+        with open(dict_path, "r") as f:
+            lang_bits = f.read().strip()
+
+        print(f"note: using local cached dictionary for '{language}' ({dict_path})")
+        return lang_bits
+
+    return None
+
+
+def _resolve_single_language(language: str):
+    """Resolves ONE requested language (fetch-then-local, with FALLBACK_LANGUAGE as a second attempt if the first fails entirely).
+    Returns (resolved_code, lang_bits), or None if nothing is available."""
 
     if language not in LANGUAGE_IDS:
         print(f"note: language '{language}' not recognized (not present in LANGUAGE_IDS)")
     else:
-        print(f"note: dictionary for language '{language}' not found ({_language_dict_path(language)})")
+        lang_bits = _resolve_and_load_single(language)
 
-    if language != FALLBACK_LANGUAGE and FALLBACK_LANGUAGE in LANGUAGE_IDS and os.path.exists(_language_dict_path(FALLBACK_LANGUAGE)):
-        print(f"note: falling back to '{FALLBACK_LANGUAGE}' for '{language}'")
-        return FALLBACK_LANGUAGE
+        if lang_bits is not None:
+            return language, lang_bits
+
+        print(f"note: no dictionary available for '{language}' (fetch and local cache both unavailable)")
+
+    if language != FALLBACK_LANGUAGE:
+        lang_bits = _resolve_and_load_single(FALLBACK_LANGUAGE)
+
+        if lang_bits is not None:
+            print(f"note: falling back to '{FALLBACK_LANGUAGE}' for '{language}'")
+            return FALLBACK_LANGUAGE, lang_bits
 
     print(f"note: no dictionary available for '{language}' (requested and fallback both missing), dropping it")
     return None
 
 
 def _resolve_language_list(languages: list) -> list:
-    """Resolves each requested language independently (with fallback), then deduplicates -- the fallback language never appears twice even if several requested languages collapse onto it. May return an empty list."""
+    """Resolves each requested language independently, then deduplicates by resolved code, the fallback language never appears twice even if several requested languages collapse onto it.
+    May return an empty list."""
 
     resolved = []
+    seen_codes = set()
+
     for language in languages:
         r = _resolve_single_language(language)
 
-        if r is not None and r not in resolved:
-            resolved.append(r)
+        if r is not None:
+            code, lang_bits = r
+
+            if code not in seen_codes:
+                seen_codes.add(code)
+                resolved.append((code, lang_bits))
 
     if not resolved:
         print("note: no language dictionary available at all, falling back to fully local mode (no external alphabet)")
@@ -145,18 +215,19 @@ def _resolve_language_list(languages: list) -> list:
 
 
 def _load_language_dicts(languages: list) -> list:
-    """Resolves and loads dictionaries for a list of requested languages. Returns a list of (lang_id, dict_bits) tuples, possibly empty."""
+    """Resolves and loads dictionaries for a list of requested languages.
+    Returns a list of (lang_id, dict_bits, fingerprint) tuples, possibly empty."""
 
     resolved = _resolve_language_list(languages)
 
     loaded = []
-    for language in resolved:
-        lang_id = LANGUAGE_IDS[language]
+    for code, lang_bits in resolved:
+        lang_id = LANGUAGE_IDS[code]
+        fingerprint = compute_fingerprint(lang_bits)
 
-        with open(_language_dict_path(language), "r") as f:
-            lang_bits = f.read().strip()
+        print(f"note: resolved '{code}' (lang_id={lang_id}, fingerprint={fingerprint:#06x})")
 
-        loaded.append((lang_id, lang_bits))
+        loaded.append((lang_id, lang_bits, fingerprint))
 
     return loaded
 
@@ -180,18 +251,23 @@ def compress_program_strings(strings: list, languages: list | None = None, min_l
 
     if loaded:
         n_langs = len(loaded)
-        lang_bufs = [bits.encode('ascii') for _, bits in loaded]
+        lang_bufs = [bits.encode('ascii') for _, bits, _ in loaded]
 
         lang_arr = (ctypes.c_char_p * n_langs)(*lang_bufs)
         lang_lens = (ctypes.c_int32 * n_langs)(*[len(b) for b in lang_bufs])
-        lang_ids_arr = (ctypes.c_int32 * n_langs)(*[lid for lid, _ in loaded])
+        lang_ids_arr = (ctypes.c_int32 * n_langs)(*[lid for lid, _, _ in loaded])
+        lang_fingerprints_arr = (ctypes.c_int32 * n_langs)(*[fp for _, _, fp in loaded])
+
+        print(f"note: compressing with {n_langs} language dictionary(ies), chain order to be chosen by the search")
 
         res_ptr = _lib.qrtree_compress_program_multilang(
             arr_ptrs, arr_lens, n,
-            lang_arr, lang_lens, lang_ids_arr, n_langs,
+            lang_arr, lang_lens, lang_ids_arr, lang_fingerprints_arr, n_langs,
             min_len, max_len, max_dict, exh_max_depth, nthreads,
         )
     else:
+        print("note: compressing in fully local mode (no external language dictionary)")
+
         res_ptr = _lib.qrtree_compress_program_local(
             arr_ptrs, arr_lens, n,
             min_len, max_len, max_dict, exh_max_depth, nthreads,

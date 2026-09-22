@@ -235,12 +235,12 @@ def decode(inputFileName, outputFileName, debug):
     s = Scanner(debug)
     p = Parser(s, debug)
     file_content = None
-    with open(f"{os.path.splitext(inputFileName)[0]}.qr", 'r') as f:
+    with open(f"{os.path.splitext(inputFileName)[0]}.qr", 'r', encoding="utf-8") as f:
         file_content = f.read()
 
     code = p.parse(file_content)
     html = to_html(outputFileName, code)
-    with open(f"{outputFileName}", 'w') as f:
+    with open(f"{outputFileName}", 'w', encoding="utf-8") as f:
             f.write(html)
     
     return code

@@ -4,33 +4,36 @@
 import importlib.util
 import os
 import sys
+import urllib.request
+
+FETCH_TIMEOUT_SECONDS = 5
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 DICTIONARIES_DIR = os.path.normpath(os.path.join(_HERE, "..", "..", "dictionaries"))
 
 
-def _load_language_ids() -> dict:
-    """Loads the single shared LANGUAGE_IDS mapping from dictionaries/lang_ids.py"""
-
+def _load_shared_lang_module():
     path = os.path.join(DICTIONARIES_DIR, "lang_ids.py")
 
     if not os.path.exists(path):
-        raise FileNotFoundError(
-            f"Shared language id mapping not found: {path}. "
-            f"This file is the single source of truth for LANGUAGE_IDS, shared with compression.py."
-        )
+        raise FileNotFoundError(f"Shared language module not found: {path}. This file is the single source of truth for LANGUAGE_IDS, LANGUAGE_URLS and the dictionary fingerprint, shared with compression.py.")
 
     spec = importlib.util.spec_from_file_location("qrtree_lang_ids", path)
+
     if spec is None or spec.loader is None:
-        raise ImportError(f"Could not load module spec from {path}")
+        raise ImportError(f"Could not load module spec for {path}")
 
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
-    return mod.LANGUAGE_IDS
+    return mod
 
 
-LANGUAGE_IDS = _load_language_ids()
+_lang_module = _load_shared_lang_module()
+LANGUAGE_IDS = _lang_module.LANGUAGE_IDS
+LANGUAGE_URLS = _lang_module.LANGUAGE_URLS
+FINGERPRINT_BITS = _lang_module.FINGERPRINT_BITS
+compute_fingerprint = _lang_module.compute_fingerprint
 ID_TO_LANGUAGE = {v: k for k, v in LANGUAGE_IDS.items()}
 
 
@@ -97,7 +100,8 @@ def huffman_read_symbol(bits: str, pos: int, lookup: dict, max_len: int) -> tupl
 
 
 def read_lang_dict(bits: str, pos: int) -> tuple:
-    """Decode an external language alphabet (A bytes + A+1 lengths, last id = escape) + trailing D=0. The escape id is returned -- in modalita' B it is genuinely used, to fall through to the next language in the chain."""
+    """Decode an external language alphabet (A bytes + A+1 lengths, last id = escape) + trailing D=0.
+    The escape id is returned."""
 
     A, pos = exp_read(bits, pos)
 
@@ -127,7 +131,7 @@ def read_lang_dict(bits: str, pos: int) -> tuple:
 
 
 def read_supplemental_alphabet(bits: str, pos: int) -> tuple:
-    """Decode the auxiliary alphabet (chars none of the N external languages cover), no escape of its own -- it is always the terminal of the chain."""
+    """Decode the auxiliary alphabet (chars none of the N external languages cover), no escape of its own, it is always the terminal of the chain."""
 
     A, pos = exp_read(bits, pos)
 
@@ -152,7 +156,7 @@ def read_supplemental_alphabet(bits: str, pos: int) -> tuple:
 
 
 def read_local_alphabet(bits: str, pos: int) -> tuple:
-    """Decode the full local alphabet (A bytes + A lengths), no escape -- covers 100% of the program by construction."""
+    """Decode the full local alphabet (A bytes + A lengths)."""
 
     A, pos = exp_read(bits, pos)
 
@@ -177,7 +181,8 @@ def read_local_alphabet(bits: str, pos: int) -> tuple:
 
 
 def read_char_unified(bits: str, pos: int, mode: int, char_info, suppl_info) -> tuple:
-    """Decode one character. Mode 0 (multilingua, catena di escape): tries langs[0]'s tree; if the decoded symbol is its escape, tries langs[1]; and so on; if the last language's escape triggers too, reads the auxiliary tree (which has no escape of its own). Mode 1 (locale): no chain, reads the single local tree directly."""
+    """Decode one character. Mode 0 (multilanguage, escape chain): tries langs[0]'s tree; if the decoded symbol is its escape, tries langs[1]; and so on; if the last language's escape triggers too, reads the auxiliary tree (which has no escape of its own).
+    Mode 1 (all local): no chain, reads the single local tree directly."""
 
     if mode == 0:
         for lang in char_info['langs']:
@@ -242,8 +247,34 @@ def read_compressed_string_unified(bits: str, pos: int, mode: int, char_info, su
     return out.decode('utf-8'), pos
 
 
-def _load_one_language(lang_id: int, dictionaries_dir: str) -> dict:
-    """Loads and parses a single external language dictionary by id. Terminates on any failure."""
+def _try_fetch_language_dict(language: str, url: str):
+    """Tries to fetch a language dictionary from its configured URL.
+    Returns the validated bitstring content, or None on any failure (network, timeout, invalid content)."""
+
+    try:
+        with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT_SECONDS) as response:
+            raw = response.read()
+    except OSError as e:
+        print(f"note: fetch failed for '{language}' from {url}: {e}")
+        return None
+
+    try:
+        lang_bits = raw.decode('ascii').strip()
+    except UnicodeDecodeError:
+        print(f"note: fetched content for '{language}' from {url} is not valid ASCII, discarding")
+        return None
+
+    if not lang_bits or any(c not in "01" for c in lang_bits):
+        print(f"note: fetched content for '{language}' from {url} is not a valid '0'/'1' bitstring, discarding")
+        return None
+
+    print(f"note: fetched '{language}' from {url} ({len(lang_bits)} bit)")
+    return lang_bits
+
+
+def _load_one_language(lang_id: int, expected_fingerprint: int, dictionaries_dir: str) -> dict:
+    """Loads and parses a single external language dictionary by id, checking its content fingerprint against the one embedded in the header. Tries the local cache first; only on a mismatch (or if missing) does it try a remote fetch, and only keeps a fetched copy if IT ALSO matches the expected fingerprint.
+    Terminates on any failure to obtain a matching dictionary."""
 
     language = ID_TO_LANGUAGE.get(lang_id)
     if language is None:
@@ -251,16 +282,48 @@ def _load_one_language(lang_id: int, dictionaries_dir: str) -> dict:
         sys.exit(1)
 
     dict_path = os.path.join(dictionaries_dir, f"{language}.bin")
+    lang_bits = None
 
-    try:
-        with open(dict_path, "r") as dict_file:
-            lang_bits = dict_file.read().strip()
-    except OSError as e:
-        print(f"ERROR: language dictionary for '{language}' (lang_id={lang_id}) not found or unreadable: {dict_path} ({e})")
-        sys.exit(1)
+    if os.path.exists(dict_path):
+        with open(dict_path, "r") as f:
+            local_bits = f.read().strip()
 
-    if not lang_bits or any(c not in "01" for c in lang_bits):
-        print(f"ERROR: language dictionary for '{language}' is corrupted (not a valid '0'/'1' bitstring): {dict_path}")
+        if local_bits and all(c in "01" for c in local_bits):
+            local_fingerprint = compute_fingerprint(local_bits)
+
+            if local_fingerprint == expected_fingerprint:
+                print(f"note: using local dictionary for '{language}' (lang_id={lang_id}, fingerprint={local_fingerprint:#06x} matches)")
+                lang_bits = local_bits
+            else:
+                print(f"note: local dictionary for '{language}' does not match (local={local_fingerprint:#06x}, expected={expected_fingerprint:#06x}), trying remote fetch")
+        else:
+            print(f"note: local dictionary for '{language}' is corrupted, trying remote fetch")
+    else:
+        print(f"note: no local dictionary for '{language}' (lang_id={lang_id}), trying remote fetch")
+
+    if lang_bits is None:
+        url = LANGUAGE_URLS.get(language)
+
+        if url:
+            fetched = _try_fetch_language_dict(language, url)
+
+            if fetched is not None:
+                fetched_fingerprint = compute_fingerprint(fetched)
+
+                if fetched_fingerprint == expected_fingerprint:
+                    print(f"note: fetched dictionary for '{language}' matches (fingerprint={fetched_fingerprint:#06x}), saving to local cache")
+
+                    with open(dict_path, "w") as f:
+                        f.write(fetched)
+
+                    lang_bits = fetched
+                else:
+                    print(f"ERROR: fetched dictionary for '{language}' from {url} does not match this eQR code (fetched fingerprint={fetched_fingerprint:#06x}, expected={expected_fingerprint:#06x})"
+                    )
+                    sys.exit(1)
+
+    if lang_bits is None:
+        print(f"ERROR: no matching dictionary available for '{language}' (lang_id={lang_id}, expected fingerprint={expected_fingerprint:#06x}): local missing/mismatched and no working remote fetch")
         sys.exit(1)
 
     try:
@@ -276,7 +339,8 @@ def _load_one_language(lang_id: int, dictionaries_dir: str) -> dict:
 
 
 def load_unified_dictionaries(bits: str, pos: int, dictionaries_dir: str) -> tuple:
-    """Read the 1-bit mode selector and load whatever it points to: bit '0' -> N external language dictionaries in chain order (modalita' B, escape-chain: the order was chosen by the encoder to minimize this specific program's size, not the app's requested order) + auxiliary; bit '1' -> a full local alphabet. Terminates on any failure."""
+    """Read the 1-bit mode selector and load whatever it points to: bit '0' -> N external language dictionaries in chain order + auxiliary; bit '1' -> a full local alphabet.
+    Terminates on any failure."""
 
     mode = int(bits[pos])
     pos += 1
@@ -285,11 +349,16 @@ def load_unified_dictionaries(bits: str, pos: int, dictionaries_dir: str) -> tup
         n_langs, pos = exp_read(bits, pos)
 
         lang_ids = []
+        lang_fingerprints = []
         for _ in range(n_langs):
             lid, pos = exp_read(bits, pos)
-            lang_ids.append(lid)
+            fp = int(bits[pos:pos + FINGERPRINT_BITS], 2)
+            pos += FINGERPRINT_BITS
 
-        langs = [_load_one_language(lid, dictionaries_dir) for lid in lang_ids]
+            lang_ids.append(lid)
+            lang_fingerprints.append(fp)
+
+        langs = [_load_one_language(lid, fp, dictionaries_dir) for lid, fp in zip(lang_ids, lang_fingerprints)]
         char_info = {'langs': langs}
 
         try:

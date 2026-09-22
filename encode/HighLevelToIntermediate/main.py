@@ -20,7 +20,7 @@ def encode(file, debug):
     p = Parser(s, debug=debug)
     file_content = None
 
-    with open(file, mode='r') as f:
+    with open(file, mode='r', encoding='utf-8') as f:
         file_content = f.read()
 
     code = p.parse(file_content)
@@ -32,7 +32,7 @@ def encode(file, debug):
             line.par1 = line.par1 + i + 1
 
     # Scrivo il file in formato testuale
-    with open(f"{os.path.splitext(file)[0]}.qr", mode='w') as f:
+    with open(f"{os.path.splitext(file)[0]}.qr", mode='w', encoding='utf-8') as f:
         for i, line in enumerate(code):
             print(f"({i}) {line.to_asm()}", file=f)
     

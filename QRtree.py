@@ -69,7 +69,7 @@ if __name__ == '__main__':
     parser.add_argument("type", choices=["encode", "decode"], help="Indicates the type of action")
     parser.add_argument("input", type=str, help="The input file to process")
     parser.add_argument("-o", "--output", type=str, nargs='?', help="The optional output file")
-    parser.add_argument("-d", "--debug", action='store_true', help="Prints debug output and generates AST parse tree image")
+    parser.add_argument("-d", "--debug", action='store_true', help="Prints debug output")
     parser.add_argument("--no-cleanup", action='store_true', help="Specifies that the temporary files are not to be deleted")
     parser.add_argument("--languages", "-l", type=_parse_languages, default=["en"], help="Comma-separated list of languages to use for compression, in priority order (e.g. 'it,en')")
     parser.add_argument("--max-depth", "-m", type=int, default=1, help="DFS branch-and-bound search depth: 0 = greedy only (fastest), N = search depth N")

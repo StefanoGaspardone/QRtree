@@ -7,9 +7,6 @@
 #include <math.h>
 #include <pthread.h>
 
-/* ============================================================
- * Constants
- * ============================================================ */
 #define RAW 0
 #define TOK 1
 
@@ -17,6 +14,8 @@
 #define ENC_HUFF_FREQ 1
 #define ENC_HUFF_LEN 2
 #define ENC_POSITIONAL 3
+
+#define FINGERPRINT_BITS 16
 
 static int g_nthreads = 1;
 
@@ -47,9 +46,6 @@ static int ref_enc_size_bits(int64_t value) {
     }
 }
 
-/* ============================================================
- * Huffman
- * ============================================================ */
 typedef struct {
     int64_t freq;
     int64_t tie;
@@ -220,10 +216,6 @@ static uint8_t *normalize_freqs(const int64_t *freq, const int n) {
     return out;
 }
 
-/* ============================================================
- * Elias gamma (rimasto per compatibilita' della dispatch a 4 encoding
- * sui token dei frammenti -- non usato per l'alfabeto, sempre huffman-len)
- * ============================================================ */
 static int elias_bitlen(const uint64_t n_plus1_bits) {
     int k = 0;
     uint64_t v = n_plus1_bits;
@@ -244,9 +236,6 @@ static int elias_length(const int64_t i) {
     return 2 * k + 1;
 }
 
-/* ============================================================
- * Codec length (token overhead -- generico, riusato invariato)
- * ============================================================ */
 static int *uniform_lengths(const int count) {
     if(count == 0) return NULL;
 
@@ -368,9 +357,6 @@ static int codec_overhead_bits(const int encoding, const int count) {
 
 typedef struct { uint8_t *data; size_t len; } StrItem;
 
-/* ============================================================
- * Sym / Seq / SeqList
- * ============================================================ */
 typedef struct { uint8_t type; int32_t val; } Sym;
 
 typedef struct { Sym *items; int len; int cap; } Seq;
@@ -442,9 +428,6 @@ static SeqList initial_sequences(const StrItem *strs, const int n) {
     return sl;
 }
 
-/* ============================================================
- * Dictionary
- * ============================================================ */
 typedef struct { uint8_t *data; int len; } DictEntry;
 
 typedef struct { DictEntry *entries; int n; int cap; } Dictionary;
@@ -484,9 +467,6 @@ static void dict_free(Dictionary *d) {
     d->entries = NULL; d->n = 0; d->cap = 0;
 }
 
-/* ============================================================
- * Candidate map
- * ============================================================ */
 typedef struct {
     uint8_t *key;
     int keylen;
@@ -594,9 +574,6 @@ static void candmap_merge_from(CandMap *dst, const CandMap *src) {
     for(int i = 0; i < src->n; i++) candmap_incr(dst, src->entries[i].key, src->entries[i].keylen, src->entries[i].count);
 }
 
-/* ============================================================
- * Thread pool
- * ============================================================ */
 typedef void (*PoolFn)(void *);
 
 typedef struct ThreadPool ThreadPool;
@@ -726,9 +703,6 @@ static void pool_run(ThreadPool *p, PoolFn fn, void **args, const int n) {
     pthread_mutex_unlock(&p->mutex);
 }
 
-/* ============================================================
- * find_candidates
- * ============================================================ */
 static void find_candidates_range(const SeqList *sl, const int seq_from, const int seq_to, const int min_len, const int max_len, CandMap *m) {
     uint8_t *acc = malloc((size_t)(max_len > 0 ? max_len : 1));
 
@@ -819,9 +793,6 @@ static CandMap find_candidates(const SeqList *sl, const int min_len, const int m
     return filtered;
 }
 
-/* ============================================================
- * Pattern matching / replacement over sequences
- * ============================================================ */
 static int seq_matches_pattern_at(const Seq *seq, const int pos, const uint8_t *pat, const int m) {
     if(pos + m > seq->len) return 0;
 
@@ -884,9 +855,6 @@ static SeqList replace_non_overlapping(const SeqList *sl, const uint8_t *pat, co
     return out;
 }
 
-/* ============================================================
- * Scoring
- * ============================================================ */
 static int64_t *count_tok_freqs(const SeqList *sl, const int D) {
     int64_t *out = calloc(D > 0 ? D : 1, sizeof(int64_t));
 
@@ -1043,9 +1011,6 @@ static void score_candidates(const CandMap *cm, const SeqList *sl, const int64_t
     pool_run(g_pool, score_candidates_task, argp, nthreads);
 }
 
-/* ============================================================
- * greedy_build
- * ============================================================ */
 static void greedy_build(const StrItem *strs, const int nstrs, const int *char_bit_len_by_byte, const int encoding, const int min_len, const int max_len, const int max_dict, const Dictionary *init_dict, const SeqList *init_seqs, Dictionary *out_dict, SeqList *out_seqs) {
     SeqList seqs = init_seqs ? seqlist_clone(init_seqs) : initial_sequences(strs, nstrs);
     Dictionary dictionary;
@@ -1111,14 +1076,6 @@ static void greedy_build(const StrItem *strs, const int nstrs, const int *char_b
     *out_seqs = seqs;
 }
 
-/* ============================================================
- * DFS Branch & Bound (senza memoization -- vedi discussione: hit sempre
- * 0 per costruzione dato che l'ordine di inserimento dei frammenti fa
- * parte della chiave, e la ricerca esplora sempre candidati in ordine
- * di guadagno decrescente; la tabella cresceva monotonamente con ogni
- * nodo visitato senza mai essere utile, causando esaurimento memoria su
- * input piu' grandi).
- * ============================================================ */
 typedef struct {
     const StrItem *strs;
     int nstrs;
@@ -1282,9 +1239,6 @@ static void exhaustive_build(const StrItem *strs, const int nstrs, const int *ch
     *out_seqs = result.seqs;
 }
 
-/* ============================================================
- * Canonical Huffman codes
- * ============================================================ */
 typedef struct { uint32_t code; int length; } HCode;
 typedef struct { int sym; int length; } SortItem;
 
@@ -1427,10 +1381,6 @@ static void codec_write_overhead_ascii(const int encoding, TextBitWriter *w, con
     }
 }
 
-/* ============================================================
- * ASCII bit reader -- controparte di TextBitWriter, serve solo per
- * interpretare il buffer del dizionario-lingua esterno.
- * ============================================================ */
 typedef struct {
     const char *buf;
     size_t len;
@@ -1469,11 +1419,6 @@ static int64_t ref_enc_read(TextBitReader *r) {
     }
 }
 
-/* ============================================================
- * Alphabet -- costruito dal programma stesso. Usato solo dal ramo
- * "tutto interno" (bit selettore = 1), quando nessuna lingua e'
- * disponibile (ne' quella richiesta ne' l'inglese di fallback).
- * ============================================================ */
 typedef struct {
     uint8_t alphabet[256];
     int A;
@@ -1507,27 +1452,20 @@ static void build_alphabet(const StrItem *strs, const int n, Alphabet *out) {
     memcpy(out->char_freq_by_byte, freq, sizeof(freq));
 }
 
-static void alphabet_char_freq_by_id(const Alphabet *alph, int64_t *out /* [A] */) {
+static void alphabet_char_freq_by_id(const Alphabet *alph, int64_t *out ) {
     for(int i = 0; i < alph->A; i++) out[i] = alph->char_freq_by_byte[alph->alphabet[i]];
 }
 
-static void compute_char_bit_lengths(const uint8_t *alphabet, const int A, const int *char_lengths_by_id, int *byte_len_out /* [256] */) {
+static void compute_char_bit_lengths(const uint8_t *alphabet, const int A, const int *char_lengths_by_id, int *byte_len_out ) {
     for(int i = 0; i < A; i++) byte_len_out[alphabet[i]] = char_lengths_by_id[i];
 }
 
-/* ============================================================
- * External language alphabet -- parsed from a <lang>.bin buffer already
- * read into memory by Python (this C file never touches the filesystem).
- * Format (fixed by build_language_dict.py, always huffman-len):
- *   A (exp.enc.) + A bytes (8 bit) + (A+1) lengths (4 bit, ids 0..A-1
- *   real chars, id A = escape) + D=0 (exp.enc., always-empty placeholder)
- * ============================================================ */
 typedef struct {
-    uint8_t alphabet[256];   /* real characters, indexed 0..A-1 */
-    int A;                    /* count of real characters (escape excluded) */
-    int byte_to_id[256];      /* -1 if this byte is not covered externally */
-    HCode *codes;              /* A+1 canonical codes: 0..A-1 real, A = escape */
-    int escape_id;             /* == A, kept named for readability at call sites */
+    uint8_t alphabet[256];   
+    int A;                    
+    int byte_to_id[256];      
+    HCode *codes;              
+    int escape_id;             
 } LangAlphabet;
 
 static void lang_alphabet_free(LangAlphabet *la) {
@@ -1559,23 +1497,16 @@ static LangAlphabet parse_lang_dict(const char *bits, const int32_t bits_len) {
     la.codes = canonical_codes(lengths, A + 1);
     free(lengths);
 
-    /* D=0 placeholder che segue sempre un dizionario-lingua (non ha mai
-     * frammenti) -- letto e scartato, solo per restare sincronizzati col
-     * formato dello scrittore e lasciare r su una posizione ben definita. */
     (void)ref_enc_read(&r);
 
     return la;
 }
 
-/* ============================================================
- * Supplemental (local) alphabet -- costruito al volo sui byte di
- * QUESTO programma non coperti dall'alfabeto-lingua esterno.
- * ============================================================ */
 typedef struct {
     uint8_t alphabet[256];
     int A;
     int byte_to_id[256];
-    HCode *codes;   /* A codici canonici, nessun escape necessario qui */
+    HCode *codes;   
 } SupplAlphabet;
 
 static void suppl_alphabet_free(SupplAlphabet *sa) {
@@ -1583,12 +1514,6 @@ static void suppl_alphabet_free(SupplAlphabet *sa) {
     sa->codes = NULL;
 }
 
-/* ============================================================
- * Alfabeto locale (ramo "tutto interno", bit=1) -- stesso formato-blocco
- * usato ovunque nel progetto (conteggio + byte + lunghezze a 4 bit), qui
- * pero' SENZA slot escape: e' l'intero alfabeto del programma, per
- * costruzione copre gia' il 100% dei caratteri usati.
- * ============================================================ */
 static void write_local_alphabet_ascii(TextBitWriter *w, const Alphabet *alph, const int *char_lengths_by_id) {
     const int A = alph->A;
     ref_enc_write(w, A);
@@ -1635,15 +1560,10 @@ static char *write_seq_local_ascii(const Seq *seq, const Alphabet *alph, const H
     return tbw_finish(&w);
 }
 
-/* ============================================================
- * Struct risultato condivisa da entrambi gli entry point (locale e
- * multi-lingua) -- stessa identica forma in entrambi i casi, non serve
- * duplicarla.
- * ============================================================ */
 typedef struct {
-    char *dict_bits;           /* bit selettore + payload del ramo scelto */
+    char *dict_bits;           
     int32_t dict_bits_len;
-    char **stream_bits;         /* n_strings stringhe ASCII '0'/'1', stesso ordine dell'input */
+    char **stream_bits;         
     int32_t *stream_bits_len;
     int32_t n_strings;
 } QRTreeResult;
@@ -1660,12 +1580,6 @@ void qrtree_result_free(QRTreeResult *r) {
     free(r);
 }
 
-/* ============================================================
- * Library API -- modalita' locale (bit=1): nessun dizionario-lingua
- * disponibile (lista risolta vuota, ne' le lingue richieste ne'
- * l'inglese di fallback). Alfabeto costruito interamente dal programma,
- * nessun overhead esterno.
- * ============================================================ */
 QRTreeResult *qrtree_compress_program_local(
     const uint8_t **strings, const int32_t *string_lens, const int32_t n_strings,
     const int32_t min_len, const int32_t max_len, const int32_t max_dict,
@@ -1709,7 +1623,7 @@ QRTreeResult *qrtree_compress_program_local(
     TextBitWriter dict_w;
     tbw_init(&dict_w, 4096);
 
-    tbw_push_bits_msb(&dict_w, 1, 1);   /* bit 1: tutto interno */
+    tbw_push_bits_msb(&dict_w, 1, 1);   
     write_local_alphabet_ascii(&dict_w, &alph, local_char_lengths_by_id);
     write_fragments_section_local_ascii(&dict_w, &alph, local_char_codes, &dictionary, tok_freqs);
 
@@ -1741,29 +1655,6 @@ QRTreeResult *qrtree_compress_program_local(
     return out;
 }
 
-/* ============================================================
- * Multi-lingua (modalita' B) -- catena di escape su N dizionari di
- * lingua, generalizzazione diretta del vecchio meccanismo a singola
- * lingua: si prova prima langs[0]; se il simbolo decodificato e' il suo
- * escape, si prova langs[1]; e cosi' via fino a langs[n_langs-1]; se
- * anche l'ultimo va in escape, si usa l'ausiliario (che non ha un
- * proprio escape, e' sempre il terminale, come gia' oggi).
- *
- * Un carattere coperto da langs[i] costa: le escape di langs[0..i-1]
- * (una per ciascuna, per "scartarle") + il suo vero codice in langs[i].
- * Nessun costo fisso per carattere come nel selettore della modalita' A
- * -- qui il costo e' condizionato a quanto "in fondo alla catena" sta
- * il dizionario che copre quel byte.
- *
- * L'ORDINE della catena non e' quello con cui Python passa le lingue:
- * l'encoder prova esaustivamente tutti gli N! ordinamenti possibili
- * (N e' piccolo, tipicamente 2-4), valuta ciascuno con una greedy_build
- * economica (max_depth=0, su sequenze pulite), e sceglie l'ordinamento
- * che minimizza il totale bit -- poi rifa' la ricerca vera (al
- * max_depth richiesto) una sola volta, con l'ordinamento vincente. Se
- * il max_depth richiesto e' proprio 0, il risultato della ricerca
- * dell'ordine viene riusato direttamente, senza ricalcolarlo.
- * ============================================================ */
 static void write_supplemental_alphabet_ascii(TextBitWriter *w, const SupplAlphabet *suppl) {
     ref_enc_write(w, suppl->A);
 
@@ -1771,10 +1662,7 @@ static void write_supplemental_alphabet_ascii(TextBitWriter *w, const SupplAlpha
     for(int i = 0; i < suppl->A; i++) tbw_push_bits_msb(w, (uint64_t)suppl->codes[i].length, 4);
 }
 
-/* Costo in bit per ciascuno dei 256 byte possibili, attraversando la
- * catena nell'ordine dato -- usata sia per la ricerca dell'ordine
- * (su ogni permutazione) sia per la ricerca frammenti vera finale. */
-static void compute_chain_char_bit_lengths(const LangAlphabet *chain, const int n_langs, const SupplAlphabet *suppl, int *byte_len_out /* [256] */) {
+static void compute_chain_char_bit_lengths(const LangAlphabet *chain, const int n_langs, const SupplAlphabet *suppl, int *byte_len_out ) {
     for(int b = 0; b < 256; b++) {
         int64_t cost = 0;
         int covered = 0;
@@ -1803,9 +1691,6 @@ static void compute_chain_char_bit_lengths(const LangAlphabet *chain, const int 
     }
 }
 
-/* Scrive un carattere attraversando la catena dal vivo: nessuna tabella
- * precalcolata necessaria, l'encoder e il decoder rifanno esattamente
- * lo stesso percorso in modo deterministico. */
 static void write_chain_char_symbol(TextBitWriter *w, const LangAlphabet *chain, const int n_langs, const SupplAlphabet *suppl, const uint8_t byte_val) {
     for(int i = 0; i < n_langs; i++) {
         const int id = chain[i].byte_to_id[byte_val];
@@ -1860,11 +1745,6 @@ static char *write_seq_chain_ascii(const Seq *seq, const LangAlphabet *chain, co
     return tbw_finish(&w);
 }
 
-/* ============================================================
- * Permutazioni -- N e' piccolo (tipicamente 2-4 lingue), N! e' quindi
- * banale da enumerare per intero. Nessuna euristica: si prova ogni
- * ordinamento possibile e si misura il costo vero su questo programma.
- * ============================================================ */
 static int factorial_small(const int n) {
     int f = 1;
     for(int i = 2; i <= n; i++) f *= i;
@@ -1907,16 +1787,9 @@ static void free_permutations(int **perms, const int count) {
     free(perms);
 }
 
-/* ============================================================
- * Library API -- modalita' B, N dizionari di lingua in catena di
- * escape, con ordine scelto automaticamente dall'encoder (vedi sopra).
- *
- * Precondizione: n_langs >= 1 (come per la modalita' A -- se la lista
- * e' vuota, Python chiama invece qrtree_compress_program_local).
- * ============================================================ */
 QRTreeResult *qrtree_compress_program_multilang(
     const uint8_t **strings, const int32_t *string_lens, const int32_t n_strings,
-    const char **lang_dict_bits_arr, const int32_t *lang_dict_bits_len_arr, const int32_t *lang_ids, const int32_t n_langs,
+    const char **lang_dict_bits_arr, const int32_t *lang_dict_bits_len_arr, const int32_t *lang_ids, const int32_t *lang_fingerprints, const int32_t n_langs,
     const int32_t min_len, const int32_t max_len, const int32_t max_dict,
     const int32_t exh_max_depth, const int32_t nthreads
 ) {
@@ -1932,16 +1805,11 @@ QRTreeResult *qrtree_compress_program_multilang(
         strs[i].len = (size_t)string_lens[i];
     }
 
-    /* le N lingue, parsate una volta sola nell'ordine ricevuto da Python
-     * -- quell'ordine non ha alcun significato per la catena, verra'
-     * rimescolato dalla ricerca qui sotto */
     LangAlphabet *langs_in = (LangAlphabet *)malloc(sizeof(LangAlphabet) * (n_langs > 0 ? n_langs : 1));
     for(int i = 0; i < n_langs; i++) {
         langs_in[i] = parse_lang_dict(lang_dict_bits_arr[i], lang_dict_bits_len_arr[i]);
     }
 
-    /* ausiliario: identico per qualunque ordine della catena -- copre i
-     * byte non coperti da NESSUNA delle n_langs lingue */
     int64_t freq[256] = {0};
     int present[256] = {0};
 
@@ -1977,9 +1845,6 @@ QRTreeResult *qrtree_compress_program_multilang(
         free(freq_by_id); free(lengths);
     }
 
-    /* --- ricerca esaustiva sull'ordine della catena: N! tentativi,
-     * ognuno valutato SOLO con greedy_build (max_depth=0), su sequenze
-     * pulite ogni volta --- */
     int n_perms = 0;
     int **perms = generate_permutations(n_langs, &n_perms);
 
@@ -2015,11 +1880,13 @@ QRTreeResult *qrtree_compress_program_multilang(
         }
     }
 
-    /* ordine vincente, fissato per il resto della funzione */
     for(int i = 0; i < n_langs; i++) chain[i] = langs_in[perms[best_perm_idx][i]];
 
     int32_t *winning_lang_ids = (int32_t *)malloc(sizeof(int32_t) * (n_langs > 0 ? n_langs : 1));
     for(int i = 0; i < n_langs; i++) winning_lang_ids[i] = lang_ids[perms[best_perm_idx][i]];
+
+    int32_t *winning_lang_fingerprints = (int32_t *)malloc(sizeof(int32_t) * (n_langs > 0 ? n_langs : 1));
+    for(int i = 0; i < n_langs; i++) winning_lang_fingerprints[i] = lang_fingerprints[perms[best_perm_idx][i]];
 
     free_permutations(perms, n_perms);
 
@@ -2032,8 +1899,7 @@ QRTreeResult *qrtree_compress_program_multilang(
     Dictionary dictionary; SeqList seqs;
 
     if(!max_depth_is_none && max_depth == 0) {
-        /* stesso identico calcolo gia' fatto durante la ricerca
-         * dell'ordine per questa permutazione -- non rifarlo */
+        
         dictionary = best_greedy_dict;
         seqs = best_greedy_seqs;
         best_greedy_valid = 0;
@@ -2051,9 +1917,12 @@ QRTreeResult *qrtree_compress_program_multilang(
     TextBitWriter dict_w;
     tbw_init(&dict_w, 4096);
 
-    tbw_push_bits_msb(&dict_w, 0, 1);   /* bit 0: esterno presente, stesso significato di prima */
+    tbw_push_bits_msb(&dict_w, 0, 1);   
     ref_enc_write(&dict_w, n_langs);
-    for(int i = 0; i < n_langs; i++) ref_enc_write(&dict_w, winning_lang_ids[i]);
+    for(int i = 0; i < n_langs; i++) {
+        ref_enc_write(&dict_w, winning_lang_ids[i]);
+        tbw_push_bits_msb(&dict_w, (uint64_t)(uint32_t)winning_lang_fingerprints[i], FINGERPRINT_BITS);
+    }
     write_supplemental_alphabet_ascii(&dict_w, &suppl);
     write_fragments_section_chain_ascii(&dict_w, chain, n_langs, &suppl, &dictionary, tok_freqs);
 
@@ -2070,6 +1939,7 @@ QRTreeResult *qrtree_compress_program_multilang(
     }
 
     free(winning_lang_ids);
+    free(winning_lang_fingerprints);
     free(chain);
 
     free(tok_lengths_by_id);
