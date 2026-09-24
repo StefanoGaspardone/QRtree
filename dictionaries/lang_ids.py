@@ -4,6 +4,8 @@ LANGUAGES = [
     {"code": "en", "url": None},
     {"code": "it", "url": "http://127.0.0.1:8899/it.bin"},
     {"code": "ch", "url": None},
+    {"code": "fr", "url": None},
+    {"code": "de", "url": None},
 ]
 
 LANGUAGE_IDS = {lang["code"]: i for i, lang in enumerate(LANGUAGES)}

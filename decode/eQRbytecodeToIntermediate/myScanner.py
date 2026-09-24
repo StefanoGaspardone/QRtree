@@ -27,9 +27,9 @@ class Scanner:
     )
 
     def t_DICT_HEADER(self, t):
-        r'[01]'
+        r'011'
         lexer = t.lexer
-        self.mode, self.char_info, self.suppl_info, self.frag_info, lexer.lexpos = load_unified_dictionaries(lexer.lexdata, lexer.lexpos - 1, DICTIONARIES_DIR)
+        self.mode, self.char_info, self.suppl_info, self.frag_info, lexer.lexpos = load_unified_dictionaries(lexer.lexdata, lexer.lexpos, DICTIONARIES_DIR)
         lexer.begin('code')
         return t
 

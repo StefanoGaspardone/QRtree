@@ -26,7 +26,10 @@ class Parser:
         self.compressed_idx = 0
 
         self.output = open(f"{self.fileName}.bin", "w")
+        
+        self.output.write("011") # Command 011: DICT COMMAND
         self.output.write(result['dict_bits'])
+        self.output.write("000") # Command HEADER_END
 
         self.parser.parse(source_text)
 

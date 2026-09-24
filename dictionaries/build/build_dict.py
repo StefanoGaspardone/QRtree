@@ -139,8 +139,8 @@ def build_language_dict(lang_code: str):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Costruisce il dizionario-alfabeto ottimizzato per una lingua (huffman-len), script autonomo")
-    ap.add_argument("lang", help="codice lingua (es. 'en'), deve avere un corpus in corpora/<lang>.txt")
+    ap = argparse.ArgumentParser(description="Costruisce il dizionario-alfabeto ottimizzato per una lingua, script autonomo")
+    ap.add_argument("lang", help="codice lingua (es. 'en'), deve avere un corpus in corpus/<lang>.txt")
 
     args = ap.parse_args()
     build_language_dict(args.lang)

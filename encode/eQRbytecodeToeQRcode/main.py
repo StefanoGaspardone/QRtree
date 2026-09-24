@@ -24,7 +24,7 @@ def encode(inputFileName, outputFileName):
         url = "0"
         dialect = "0000"
         version = "0001"
-        qrtree_header = "0"
+        qrtree_header = "1"
         padding = "0" * ((8 - (len(continuation) + len(security_profile) + len(url) + len(dialect) + len(version) + len(qrtree_header) + len(data) + 1)) % 8) + "1"
 
         data = f"{padding}{continuation}{security_profile}{url}{dialect}{version}{qrtree_header}{data}"

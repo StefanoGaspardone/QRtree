@@ -1,8 +1,7 @@
 import struct
 import ply.yacc as yacc
 from .myScanner import *
-from .ast_visualizer import ASTNode  # Importato dal modulo dedicato
-
+from .ast_visualizer import ASTNode
 
 class Parser:
 
@@ -60,10 +59,17 @@ class Parser:
     # A program is a list of the encodings of the instruction
     def p_prog(self, p):
         '''
-        prog : DICT_HEADER op_list
+        prog : qrtree_header op_list
         '''
         self.output.close()
-        p[0] = ASTNode("Program", [ASTNode("DICT_HEADER"), p[2]])
+        p[0] = ASTNode("Program", [p[1], p[2]])
+
+    # It could be extended and rewritten to handle multiple QRtree header commands as a list
+    def p_qrtree_header(self, p):
+        '''
+        qrtree_header : DICT_HEADER ZERO ZERO ZERO
+        '''
+        p[0] = ASTNode("DICT_HEADER")
 
     def p_op_list(self, p):
         '''
