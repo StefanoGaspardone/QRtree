@@ -14,7 +14,6 @@ if "Spia di stato":
         print "Inizializzazione in corso" exit
     else if "Spenta":
         print "Colonnina in standby" exit
-
 else if "Spia di errore":
     print "Stato di errore"
     input "Che colore?"
@@ -22,7 +21,6 @@ else if "Spia di errore":
         print "Errore critico, contattare assistenza" exit
     if "Rossa lampeggiante":
         print "Sovratemperatura del connettore" exit
-
 else if "Spia di rete":
     print "Stato della connessione di rete"
     input "Che colore?"
@@ -30,7 +28,6 @@ else if "Spia di rete":
         print "Colonnina connessa al server di gestione" exit
     else if "Spenta":
         print "Colonnina non raggiungibile dal server" exit
-
 else if "Spia connettore":
     print "Stato del blocco connettore"
     input "Che colore?"
@@ -40,7 +37,6 @@ else if "Spia connettore":
         print "Sblocco del connettore in corso" exit
     else if "Spenta":
         print "Nessun connettore inserito" exit
-
 else if "Spia potenza disponibile":
     print "Stato della potenza disponibile in rete"
     input "Che colore?"
