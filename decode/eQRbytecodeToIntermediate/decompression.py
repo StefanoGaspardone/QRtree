@@ -180,7 +180,7 @@ def read_local_alphabet(bits: str, pos: int) -> tuple:
     }, pos
 
 
-def read_char_unified(bits: str, pos: int, mode: int, char_info, suppl_info) -> tuple:
+def read_char(bits: str, pos: int, mode: int, char_info, suppl_info) -> tuple:
     """Decode one character. Mode 0 (multilanguage, escape chain): tries langs[0]'s tree; if the decoded symbol is its escape, tries langs[1]; and so on; if the last language's escape triggers too, reads the auxiliary tree (which has no escape of its own).
     Mode 1 (all local): no chain, reads the single local tree directly."""
 
@@ -198,7 +198,7 @@ def read_char_unified(bits: str, pos: int, mode: int, char_info, suppl_info) -> 
     return char_info['alphabet'][sym], pos
 
 
-def read_fragments_unified(bits: str, pos: int, mode: int, char_info, suppl_info) -> tuple:
+def read_fragments(bits: str, pos: int, mode: int, char_info, suppl_info) -> tuple:
     """Decode the fragments section: entry count, each length-prefixed entry, then the token Huffman overhead."""
 
     D, pos = exp_read(bits, pos)
@@ -209,7 +209,7 @@ def read_fragments_unified(bits: str, pos: int, mode: int, char_info, suppl_info
         entry = bytearray()
 
         for _ in range(L):
-            b, pos = read_char_unified(bits, pos, mode, char_info, suppl_info)
+            b, pos = read_char(bits, pos, mode, char_info, suppl_info)
             entry.append(b)
 
         dictionary.append(bytes(entry))
@@ -227,7 +227,7 @@ def read_fragments_unified(bits: str, pos: int, mode: int, char_info, suppl_info
     }, pos
 
 
-def read_compressed_string_unified(bits: str, pos: int, mode: int, char_info, suppl_info, frag_info: dict) -> tuple:
+def read_compressed_string(bits: str, pos: int, mode: int, char_info, suppl_info, frag_info: dict) -> tuple:
     """Decode one compressed program string: symbol count + flagged RAW/TOK symbols."""
 
     N, pos = exp_read(bits, pos)
@@ -238,7 +238,7 @@ def read_compressed_string_unified(bits: str, pos: int, mode: int, char_info, su
         pos += 1
 
         if flag == '0':
-            b, pos = read_char_unified(bits, pos, mode, char_info, suppl_info)
+            b, pos = read_char(bits, pos, mode, char_info, suppl_info)
             out.append(b)
         else:
             tid, pos = huffman_read_symbol(bits, pos, frag_info['tok_lookup'], frag_info['tok_max_len'])
@@ -338,7 +338,7 @@ def _load_one_language(lang_id: int, expected_fingerprint: int, dictionaries_dir
     return lang_info
 
 
-def load_unified_dictionaries(bits: str, pos: int, dictionaries_dir: str) -> tuple:
+def load_dictionaries(bits: str, pos: int) -> tuple:
     """Read the 1-bit mode selector and load whatever it points to: bit '0' -> N external language dictionaries in chain order + auxiliary; bit '1' -> a full local alphabet.
     Terminates on any failure."""
 
@@ -358,12 +358,12 @@ def load_unified_dictionaries(bits: str, pos: int, dictionaries_dir: str) -> tup
             lang_ids.append(lid)
             lang_fingerprints.append(fp)
 
-        langs = [_load_one_language(lid, fp, dictionaries_dir) for lid, fp in zip(lang_ids, lang_fingerprints)]
+        langs = [_load_one_language(lid, fp, DICTIONARIES_DIR) for lid, fp in zip(lang_ids, lang_fingerprints)]
         char_info = {'langs': langs}
 
         try:
             suppl_info, pos = read_supplemental_alphabet(bits, pos)
-            frag_info, pos = read_fragments_unified(bits, pos, 0, char_info, suppl_info)
+            frag_info, pos = read_fragments(bits, pos, 0, char_info, suppl_info)
         except Exception as e:
             print(f"ERROR: failed to parse multilang dictionary section (lang_ids={lang_ids}): {e}")
             sys.exit(1)
@@ -373,7 +373,7 @@ def load_unified_dictionaries(bits: str, pos: int, dictionaries_dir: str) -> tup
     else:
         try:
             local_info, pos = read_local_alphabet(bits, pos)
-            frag_info, pos = read_fragments_unified(bits, pos, 1, local_info, None)
+            frag_info, pos = read_fragments(bits, pos, 1, local_info, None)
         except Exception as e:
             print(f"ERROR: failed to parse local dictionary section: {e}")
             sys.exit(1)

@@ -11,27 +11,6 @@ class Parser:
         self.lexer = lexer
         self.output = open(f"{fileName}.qr", "w", encoding="utf-8")
         self.curline = 0
-        self.endChar = ""
-
-    # Decodes binary strings with 7-bit characters
-    def binStrToStrAscii(self, string):
-        res = ""
-        s = [string[idx:idx + 7] for idx in range(0, len(string), 7)]
-        for char in s:
-            i = int(char, 2)
-            c = chr(i)
-            res += c
-        return res
-
-    # Decodes binary strings with 8-bit characters
-    def binStrToStrUtf(self, string):
-        res = ""
-        s = [string[idx:idx + 8] for idx in range(0, len(string), 8)]
-        for char in s:
-            i = int(char, 2)
-            c = chr(i)
-            res += c
-        return res
 
     # Functions to decode the binary representation of the references
     def _exponential_ones_value(self, ones: int) -> int:
@@ -105,7 +84,7 @@ class Parser:
             val = self.binRefToIntRef(p[5])
             self.output.write("(" + str(self.curline) + ") input " + str(val) + '\n')
             arg_node = ASTNode("REF_NUMBER")
-        
+
         p[0] = ASTNode("INPUT", [arg_node])
         self.curline += 1
 
@@ -236,35 +215,6 @@ class Parser:
         '''
         self.lexer.lexer.begin('compressed')
 
-    def p_stype(self, p):
-        '''
-        stype : ZERO marker2 ZERO
-              | ZERO marker3 ONE
-        '''
-        p[0] = p[1] + p[3]
-
-    def p_marker2(self, p):
-        '''
-        marker2 :
-        '''
-        self.lexer.lexer.begin('ascii7')
-
-    def p_marker3(self, p):
-        '''
-        marker3 :
-        '''
-        self.lexer.lexer.begin('utf8')
-
-    def p_byte_list(self, p):
-        '''
-        byte_list : byte_list BYTE
-                  | BYTE
-        '''
-        if len(p) == 3:
-            p[0] = p[1] + p[2]
-        else:
-            p[0] = p[1]
-
     def p_number(self, p):
         '''
         number : marker ref
@@ -289,11 +239,11 @@ class Parser:
 
     def p_rel_op(self, p):
         '''
-        rel_op : ZERO ZERO ZERO 
+        rel_op : ZERO ZERO ZERO
                | ZERO ZERO ONE
-               | ZERO ONE ZERO 
+               | ZERO ONE ZERO
                | ZERO ONE ONE
-               | ONE ZERO ZERO 
+               | ONE ZERO ZERO
                | ONE ZERO ONE
         '''
         rel_op = "" + p[1] + p[2] + p[3]
@@ -309,12 +259,6 @@ class Parser:
             p[0] = '<'
         elif rel_op == '101':
             p[0] = '>'
-
-    def p_eot(self, p):
-        '''
-        eot : ZERO ZERO ZERO ZERO ZERO ONE ONE
-            | ZERO ZERO ZERO ZERO ZERO ZERO ONE ONE
-        '''
 
     def p_error(self, p):
         '''
