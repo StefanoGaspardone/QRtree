@@ -15,7 +15,7 @@ TEST_CASES = [
     ('colonnina-de.txt', [['de'], ['en']]),
 ]
 
-MAX_DEPTHS = [0, 1]
+MAX_DEPTHS = [0, 1, 2] if sys.platform.startswith('linux') else [0, 1]
 
 PYTHON = sys.executable
 
@@ -124,7 +124,7 @@ def run_one(input_file, languages, max_depth):
     cmd = [PYTHON, QRTREE_SCRIPT, 'encode', input_arg, '-l', lang_arg, '-m', str(max_depth), '--no-cleanup']
 
     t0 = time.time()
-    proc = subprocess.run(cmd, capture_output = True, text = True, cwd = PROJECT_ROOT)
+    proc = subprocess.run(cmd, capture_output = True, text = True, cwd = PROJECT_ROOT, timeout = None)
     elapsed = time.time() - t0
 
     bin_path = basename_abs + '.bin'
