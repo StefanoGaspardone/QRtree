@@ -1,7 +1,6 @@
 import struct
 import ply.yacc as yacc
 from .myScanner import *
-from .ast_visualizer import ASTNode
 
 class Parser:
 
@@ -41,24 +40,18 @@ class Parser:
         prog : qrtree_header op_list
         '''
         self.output.close()
-        p[0] = ASTNode("Program", [p[1], p[2]])
 
     # It could be extended and rewritten to handle multiple QRtree header commands as a list
     def p_qrtree_header(self, p):
         '''
         qrtree_header : DICT_HEADER ZERO ZERO ZERO
         '''
-        p[0] = ASTNode("DICT_HEADER")
 
     def p_op_list(self, p):
         '''
         op_list : op_list op
                 | op
         '''
-        if len(p) == 3:
-            p[0] = ASTNode("op_list", [p[1], p[2]])
-        else:
-            p[0] = ASTNode("op_list", [p[1]])
 
     def p_op(self, p):
         '''
@@ -70,7 +63,6 @@ class Parser:
            | if
            | ifc
         '''
-        p[0] = ASTNode("op", [p[1]])
 
     def p_input(self, p):
         '''
@@ -79,13 +71,9 @@ class Parser:
         '''
         if p[4] == '0':
             self.output.write("(" + str(self.curline) + ") input " + '"' + p[5] + '"' + '\n')
-            arg_node = ASTNode("COMPRESSED_STRING")
         else:
             val = self.binRefToIntRef(p[5])
             self.output.write("(" + str(self.curline) + ") input " + str(val) + '\n')
-            arg_node = ASTNode("REF_NUMBER")
-
-        p[0] = ASTNode("INPUT", [arg_node])
         self.curline += 1
 
     def p_inputs(self, p):
@@ -95,13 +83,9 @@ class Parser:
         '''
         if p[4] == '0':
             self.output.write("(" + str(self.curline) + ") inputs " + '"' + p[5] + '"' + '\n')
-            arg_node = ASTNode("COMPRESSED_STRING")
         else:
             val = self.binRefToIntRef(p[5])
             self.output.write("(" + str(self.curline) + ") inputs " + str(val) + '\n')
-            arg_node = ASTNode("REF_NUMBER")
-
-        p[0] = ASTNode("INPUTS", [arg_node])
         self.curline += 1
 
     def p_print(self, p):
@@ -111,13 +95,9 @@ class Parser:
         '''
         if p[4] == '0':
             self.output.write("(" + str(self.curline) + ") print " + '"' + p[5] + '"' + '\n')
-            arg_node = ASTNode("COMPRESSED_STRING")
         else:
             val = self.binRefToIntRef(p[5])
             self.output.write("(" + str(self.curline) + ") print " + str(val) + '\n')
-            arg_node = ASTNode("REF_NUMBER")
-
-        p[0] = ASTNode("PRINT", [arg_node])
         self.curline += 1
 
     def p_printex(self, p):
@@ -127,13 +107,9 @@ class Parser:
         '''
         if p[4] == '0':
             self.output.write("(" + str(self.curline) + ") printex " + '"' + p[5] + '"' + '\n')
-            arg_node = ASTNode("COMPRESSED_STRING")
         else:
             val = self.binRefToIntRef(p[5])
             self.output.write("(" + str(self.curline) + ") printex " + str(val) + '\n')
-            arg_node = ASTNode("REF_NUMBER")
-
-        p[0] = ASTNode("PRINTEX", [arg_node])
         self.curline += 1
 
     def p_goto(self, p):
@@ -143,7 +119,6 @@ class Parser:
         target = self.binRefToIntRef(p[4]) + self.curline + 1
         self.output.write("(" + str(self.curline) + ") goto (" + str(target) + ")" + '\n')
         self.curline += 1
-        p[0] = ASTNode("GOTO", [ASTNode("TARGET_REF")])
 
     def p_if(self, p):
         '''
@@ -153,13 +128,9 @@ class Parser:
         target = self.binRefToIntRef(p[6]) + self.curline + 1
         if p[4] == '0':
             self.output.write("(" + str(self.curline) + ") if " + '"' + p[5] + '"' + " (" + str(target) + ")" + '\n')
-            cond_node = ASTNode("COMPRESSED_STRING")
         else:
             ref_val = self.binRefToIntRef(p[5])
             self.output.write("(" + str(self.curline) + ") if " + str(ref_val) + " (" + str(target) + ")" + '\n')
-            cond_node = ASTNode("REF_NUMBER")
-
-        p[0] = ASTNode("IF", [cond_node, ASTNode("TARGET_REF")])
         self.curline += 1
 
     def p_ifc(self, p):
@@ -174,16 +145,12 @@ class Parser:
         if p[5] == '0':
             val_str = self.from_twos_complement_binary(operand_info[1])
             self.output.write("(" + str(self.curline) + ") ifc " + rel_op + " " + val_str + " (" + str(target) + ")" + '\n')
-            operand_node = ASTNode("INT_OPERAND")
         else:
             if operand_info[0] == '0':
                 float_val = str(struct.unpack('!e', struct.pack('!H', int(operand_info[1], 2)))[0]) + "f16"
             else:
                 float_val = str(struct.unpack('!f', struct.pack('!I', int(operand_info[1], 2)))[0]) + "f32"
             self.output.write("(" + str(self.curline) + ") ifc " + rel_op + " " + float_val + " (" + str(target) + ")" + '\n')
-            operand_node = ASTNode("FLOAT_OPERAND")
-
-        p[0] = ASTNode("IFC", [ASTNode("REL_OP"), operand_node, ASTNode("TARGET_REF")])
         self.curline += 1
 
     def p_operand(self, p):
