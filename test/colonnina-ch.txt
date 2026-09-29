@@ -1,0 +1,23 @@
+input "哪盏灯亮着？(Quale spia è accesa?)"
+if "状态指示灯 (Spia di stato)":
+    print "塔的运行状态 (Stato operativo della colonnina)"
+    input "什么颜色？(Che colore?)"
+    if "纯绿色 (Verde fisso)":
+        print "正在充电，一切正常 (Ricarica in corso, tutto regolare)" exit
+    else if "闪烁的绿色 (Verde lampeggiante)":
+        input "它每隔多久闪烁一次？(A che intervallo lampeggia?)"
+        if "500毫秒间隔 (Intervallo di 500 ms)":
+            print "待验证 (In attesa di autenticazione)" exit
+        else if "250毫秒间隔 (Intervallo di 250 ms)":
+            print "正在以较低功率充电 (Ricarica in corso a potenza ridotta)" exit
+    else if "闪烁的橙色 (Arancione lampeggiante)":
+        print "初始化进行中 (Inizializzazione in corso)" exit
+    else if "离开 (Spenta)":
+        print "待机列 (Colonnina in standby)" exit
+else if "故障指示灯 (Spia di errore)":
+    print "错误状态 (Stato di errore)"
+    input "什么颜色？(Che colore?)"
+    if "固定红色 (Rossa fissa)":
+        print "严重错误，请联系技术支持 (Errore critico, contattare assistenza)" exit
+    if "闪烁的红色 (Rossa lampeggiante)":
+        print "连接器过热 (Sovratemperatura del connettore)" exit
