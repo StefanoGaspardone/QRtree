@@ -1497,8 +1497,6 @@ static LangAlphabet parse_lang_dict(const char *bits, const int32_t bits_len) {
     la.codes = canonical_codes(lengths, A + 1);
     free(lengths);
 
-    (void)ref_enc_read(&r);
-
     return la;
 }
 

@@ -100,7 +100,7 @@ def huffman_read_symbol(bits: str, pos: int, lookup: dict, max_len: int) -> tupl
 
 
 def read_lang_dict(bits: str, pos: int) -> tuple:
-    """Decode an external language alphabet (A bytes + A+1 lengths, last id = escape) + trailing D=0.
+    """Decode an external language alphabet (A bytes + A+1 lengths, last id = escape).
     The escape id is returned."""
 
     A, pos = exp_read(bits, pos)
@@ -117,10 +117,6 @@ def read_lang_dict(bits: str, pos: int) -> tuple:
         pos += 4
 
     lookup, max_len = canonical_lookup(lengths)
-
-    D, pos = exp_read(bits, pos)
-    if D != 0:
-        raise ValueError(f"language dictionary must have D=0 (no fragments), got D={D}")
 
     return {
         'alphabet': alphabet,

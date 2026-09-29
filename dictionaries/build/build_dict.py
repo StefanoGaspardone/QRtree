@@ -13,19 +13,24 @@ OUTPUT_DIR = os.path.join(_HERE, "..")
 def _exponential_ones_value(ones: int) -> int:
     if ones == 0:
         return 0
+    
     if ones == 4:
         return 2 ** ones - 1
+    
     return _exponential_ones_value(ones // 2) + 2 ** (ones // 2) - 1
 
 
 def reference_encoding(value: int) -> str:
     length = 4
+    
     while True:
         ones = 0 if length == 4 else length // 2
         max_value = 2 ** (length - ones) - 1
         cur_value = value - _exponential_ones_value(ones)
+        
         if cur_value < max_value:
             return "1" * ones + format(cur_value, f"0{4 if length == 4 else length // 2}b")
+        
         length *= 2
 
 
@@ -105,8 +110,6 @@ def build_dict_bits(corpus_bytes: bytes) -> tuple:
     
     for i in range(A + 1):
         bits += format(char_lengths[i], "04b")
-
-    bits += reference_encoding(0)
 
     return bits, escape_length
 
