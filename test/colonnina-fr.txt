@@ -1,0 +1,48 @@
+input "Quel voyant est allumé?"
+if "Voyant d'état":
+    print "État de fonctionnement de la borne"
+    input "Quelle couleur?"
+    if "Vert fixe":
+        print "Recharge en cours, tout est normal" exit
+    else if "Vert clignotant":
+        input "À quel intervalle clignote-t-il?"
+        if "Intervalle de 500 ms":
+            print "En attente d'authentification" exit
+        else if "Intervalle de 250 ms":
+            print "Recharge en cours à puissance réduite" exit
+    else if "Orange clignotant":
+        print "Initialisation en cours" exit
+    else if "Éteint":
+        print "Borne en veille" exit
+else if "Voyant d'erreur":
+    print "État d'erreur"
+    input "Quelle couleur?"
+    if "Rouge fixe":
+        print "Erreur critique, contacter l'assistance" exit
+    if "Rouge clignotant":
+        print "Surchauffe du connecteur" exit
+else if "Voyant réseau":
+    print "État de la connexion réseau"
+    input "Quelle couleur?"
+    if "Allumé":
+        print "Borne connectée au serveur de gestion" exit
+    else if "Éteint":
+        print "Borne injoignable par le serveur" exit
+else if "Voyant connecteur":
+    print "État du verrouillage du connecteur"
+    input "Quelle couleur?"
+    if "Bleu fixe":
+        print "Connecteur verrouillé et recharge autorisée" exit
+    else if "Bleu clignotant":
+        print "Déverrouillage du connecteur en cours" exit
+    else if "Éteint":
+        print "Aucun connecteur inséré" exit
+else if "Voyant puissance disponible":
+    print "État de la puissance disponible sur le réseau"
+    input "Quelle couleur?"
+    if "Vert":
+        print "Pleine puissance disponible, 22 kW" exit
+    else if "Jaune":
+        print "Puissance limitée par le gestionnaire, 11 kW" exit
+    else if "Rouge":
+        print "Puissance minimale garantie, 3,7 kW" exit
