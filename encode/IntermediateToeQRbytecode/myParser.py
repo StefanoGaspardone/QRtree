@@ -1,5 +1,5 @@
 from .myScanner import *
-from .compression import compress_program_strings
+from .compression import compress_program_strings, MAX_DEPTH_DEFAULT
 import ply.yacc as yacc
 import struct
 import re
@@ -18,10 +18,10 @@ class Parser:
         return re.findall(r'"([^"]*)"', source_text)
 
     # Compress program strings
-    def encode(self, source_text, languages = None, min_len = 2, max_len = 32, max_dict = 1023, exh_max_depth = 1):
+    def encode(self, source_text, languages = None, exh_max_depth = MAX_DEPTH_DEFAULT):
         strings = self._extract_program_strings(source_text)
 
-        result = compress_program_strings(strings, languages = languages, min_len = min_len, max_len = max_len, max_dict = max_dict, exh_max_depth = exh_max_depth)
+        result = compress_program_strings(strings, languages = languages, exh_max_depth = exh_max_depth)
         self.compressed = result
         self.compressed_idx = 0
 
@@ -33,7 +33,7 @@ class Parser:
 
         self.parser.parse(source_text)
 
-    # Return the pre-computed compressed bitstring for the next string, in source order (by means of C optimization)
+    # Return the pre-computed compressed bitstring for the next string, in source order
     def stringEncoding(self, string):
         if self.compressed is None:
             raise Exception("No compression generated")
