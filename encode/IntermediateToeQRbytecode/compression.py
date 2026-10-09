@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 # String compression
 #
-# gcc -O3 -fPIC -shared -pthread -o libc2.so c2_exhaustive.c -lm
-# gcc -O3 -shared -pthread -static -o c2.dll c2_exhaustive.c -lm
-# gcc -O3 -fPIC -shared -pthread -o libc2.dylib c2_exhaustive.c -lm
+# Build the shared library with the Makefile in this folder: `make`
+# (libc2.so on Linux, libc2.dylib on macOS, libc2.dll on Windows with MinGW-w64)
 
 import ctypes
 import importlib.util
@@ -11,11 +10,7 @@ import os
 import platform
 import urllib.request
 
-EXH_MAX_DEPTH_DEFAULT = 1
-
-MIN_LEN_DEFAULT = 2
-MAX_LEN_DEFAULT = 32
-MAX_DICT_DEFAULT = 1023
+MAX_DEPTH_DEFAULT = 1
 
 FALLBACK_LANGUAGE = "en"
 FETCH_TIMEOUT_SECONDS = 5
@@ -55,14 +50,14 @@ def _find_library_path():
     system = platform.system()
 
     if system == 'Windows':
-        candidates = ['c2.dll', 'libc2.dll']
-        build_cmd = "gcc -O3 -shared -pthread -static -o c2.dll c2_exhaustive.c -lm  (MinGW-w64, e.g. MSYS2)"
+        candidates = ['libc2.dll']
+        build_cmd = "mingw32-make  (MinGW-w64, e.g. MSYS2)"
     elif system == 'Darwin':
         candidates = ['libc2.dylib']
-        build_cmd = "gcc -O3 -fPIC -shared -pthread -o libc2.dylib c2_exhaustive.c -lm"
+        build_cmd = "make"
     else:
         candidates = ['libc2.so']
-        build_cmd = "gcc -O3 -fPIC -shared -pthread -o libc2.so c2_exhaustive.c -lm"
+        build_cmd = "make"
 
     for name in candidates:
         path = os.path.join(here, name)
@@ -73,7 +68,7 @@ def _find_library_path():
     raise FileNotFoundError(
         f"Compiled c2_exhaustive library not found next to compression.py "
         f"(looked for: {', '.join(candidates)}). Build it first from "
-        f"c2_exhaustive.c, e.g.:\n  {build_cmd}\n"
+        f"c2_exhaustive.c with the Makefile in the same folder:\n  {build_cmd}\n"
         f"then place the resulting file in the same folder as compression.py."
     )
 
@@ -93,14 +88,14 @@ _lib = ctypes.CDLL(_find_library_path())
 _lib.qrtree_compress_program_local.restype = ctypes.POINTER(_QRTreeResult)
 _lib.qrtree_compress_program_local.argtypes = [
     ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_int32), ctypes.c_int32,
-    ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
+    ctypes.c_int32, ctypes.c_int32,
 ]
 
 _lib.qrtree_compress_program_multilang.restype = ctypes.POINTER(_QRTreeResult)
 _lib.qrtree_compress_program_multilang.argtypes = [
     ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_int32), ctypes.c_int32,
     ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(ctypes.c_int32), ctypes.c_int32,
-    ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
+    ctypes.c_int32, ctypes.c_int32,
 ]
 
 _lib.qrtree_result_free.argtypes = [ctypes.POINTER(_QRTreeResult)]
@@ -232,7 +227,7 @@ def _load_language_dicts(languages: list) -> list:
     return loaded
 
 
-def compress_program_strings(strings: list, languages: list | None = None, min_len: int = MIN_LEN_DEFAULT, max_len: int = MAX_LEN_DEFAULT, max_dict: int = MAX_DICT_DEFAULT, exh_max_depth: int = EXH_MAX_DEPTH_DEFAULT, nthreads: int = 0) -> dict:
+def compress_program_strings(strings: list, languages: list | None = None, exh_max_depth: int = MAX_DEPTH_DEFAULT, nthreads: int = 0) -> dict:
     """Entry point called by myParser.encode(). Runs the whole unified pipeline in C"""
 
     if languages is None:
@@ -263,14 +258,14 @@ def compress_program_strings(strings: list, languages: list | None = None, min_l
         res_ptr = _lib.qrtree_compress_program_multilang(
             arr_ptrs, arr_lens, n,
             lang_arr, lang_lens, lang_ids_arr, lang_fingerprints_arr, n_langs,
-            min_len, max_len, max_dict, exh_max_depth, nthreads,
+            exh_max_depth, nthreads,
         )
     else:
         print("note: compressing in fully local mode (no external language dictionary)")
 
         res_ptr = _lib.qrtree_compress_program_local(
             arr_ptrs, arr_lens, n,
-            min_len, max_len, max_dict, exh_max_depth, nthreads,
+            exh_max_depth, nthreads,
         )
 
     res = res_ptr.contents

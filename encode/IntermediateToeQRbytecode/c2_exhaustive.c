@@ -17,6 +17,11 @@
 
 #define FINGERPRINT_BITS 16
 
+/* Compression parameters (single source of truth; exh_max_depth is instead passed by the caller) */
+#define MIN_LEN_DEFAULT 3
+#define MAX_LEN_DEFAULT 32
+#define MAX_DICT_DEFAULT 1023
+
 static int g_nthreads = 1;
 
 static int needed_bits(int64_t n) {
@@ -875,7 +880,7 @@ static int64_t score_dictionary_bits(const Dictionary *dict, const SeqList *sl, 
     int64_t *tok_freqs = count_tok_freqs(sl, D);
     int *tok_bits = codec_token_lengths(encoding, tok_freqs, D);
 
-    int64_t dict_bits = codec_overhead_bits(encoding, D);
+    int64_t dict_bits = (int64_t)ref_enc_size_bits((int64_t)D) + codec_overhead_bits(encoding, D);
     for(int i = 0; i < D; i++) {
         const int64_t entry_header_bits = (int64_t)ref_enc_size_bits((int64_t)dict->entries[i].len);
         int64_t entry_body_bits = 0;
@@ -1011,6 +1016,13 @@ static void score_candidates(const CandMap *cm, const SeqList *sl, const int64_t
     pool_run(g_pool, score_candidates_task, argp, nthreads);
 }
 
+static int bytes_less(const uint8_t *a, const int alen, const uint8_t *b, const int blen) {
+    const int m = alen < blen ? alen : blen;
+    const int c = memcmp(a, b, (size_t)m);
+    if(c != 0) return c < 0;
+    return alen < blen;
+}
+
 static void greedy_build(const StrItem *strs, const int nstrs, const int *char_bit_len_by_byte, const int encoding, const int min_len, const int max_len, const int max_dict, const Dictionary *init_dict, const SeqList *init_seqs, Dictionary *out_dict, SeqList *out_seqs) {
     SeqList seqs = init_seqs ? seqlist_clone(init_seqs) : initial_sequences(strs, nstrs);
     Dictionary dictionary;
@@ -1019,6 +1031,10 @@ static void greedy_build(const StrItem *strs, const int nstrs, const int *char_b
     else dict_init(&dictionary, 4);
 
     int64_t current_bits = score_dictionary_bits(&dictionary, &seqs, char_bit_len_by_byte, encoding);
+
+    int64_t best_bits = current_bits;
+    int best_n = dictionary.n;
+    SeqList best_seqs = seqlist_clone(&seqs);
 
     while(dictionary.n < max_dict) {
         const int D = dictionary.n;
@@ -1033,7 +1049,10 @@ static void greedy_build(const StrItem *strs, const int nstrs, const int *char_b
         for(int i = 0; i < candidates.n; i++) {
             if(!scores[i].valid) continue;
 
-            if(scores[i].gain > best_gain) {
+            const CandEntry *e = &candidates.entries[i];
+            if(scores[i].gain > best_gain ||
+               (scores[i].gain == best_gain && best_idx >= 0 &&
+                bytes_less(e->key, e->keylen, candidates.entries[best_idx].key, candidates.entries[best_idx].keylen))) {
                 best_gain = scores[i].gain;
                 best_idx = i;
             }
@@ -1058,22 +1077,26 @@ static void greedy_build(const StrItem *strs, const int nstrs, const int *char_b
 
         const int64_t trial_bits = score_dictionary_bits(&trial_dict, &trial_seqs, char_bit_len_by_byte, encoding);
 
-        if(trial_bits >= current_bits) {
-            dict_free(&trial_dict);
-            seqlist_free(&trial_seqs);
-
-            break;
-        }
-
         dict_free(&dictionary);
         seqlist_free(&seqs);
         dictionary = trial_dict;
         seqs = trial_seqs;
         current_bits = trial_bits;
+
+        if(current_bits < best_bits) {
+            best_bits = current_bits;
+            best_n = dictionary.n;
+            seqlist_free(&best_seqs);
+            best_seqs = seqlist_clone(&seqs);
+        }
     }
 
+    for(int i = best_n; i < dictionary.n; i++) free(dictionary.entries[i].data);
+    dictionary.n = best_n;
+    seqlist_free(&seqs);
+
     *out_dict = dictionary;
-    *out_seqs = seqs;
+    *out_seqs = best_seqs;
 }
 
 typedef struct {
@@ -1580,9 +1603,12 @@ void qrtree_result_free(QRTreeResult *r) {
 
 QRTreeResult *qrtree_compress_program_local(
     const uint8_t **strings, const int32_t *string_lens, const int32_t n_strings,
-    const int32_t min_len, const int32_t max_len, const int32_t max_dict,
     const int32_t exh_max_depth, const int32_t nthreads
 ) {
+    const int min_len = MIN_LEN_DEFAULT;
+    const int max_len = MAX_LEN_DEFAULT;
+    const int max_dict = MAX_DICT_DEFAULT;
+
     if(nthreads > 0) g_nthreads = nthreads;
 
     ThreadPool pool;
@@ -1788,9 +1814,12 @@ static void free_permutations(int **perms, const int count) {
 QRTreeResult *qrtree_compress_program_multilang(
     const uint8_t **strings, const int32_t *string_lens, const int32_t n_strings,
     const char **lang_dict_bits_arr, const int32_t *lang_dict_bits_len_arr, const int32_t *lang_ids, const int32_t *lang_fingerprints, const int32_t n_langs,
-    const int32_t min_len, const int32_t max_len, const int32_t max_dict,
     const int32_t exh_max_depth, const int32_t nthreads
 ) {
+    const int min_len = MIN_LEN_DEFAULT;
+    const int max_len = MAX_LEN_DEFAULT;
+    const int max_dict = MAX_DICT_DEFAULT;
+
     if(nthreads > 0) g_nthreads = nthreads;
 
     ThreadPool pool;

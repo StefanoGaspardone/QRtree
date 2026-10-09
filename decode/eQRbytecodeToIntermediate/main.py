@@ -12,21 +12,14 @@
 import os
 from .myParser import Parser
 from .myScanner import Scanner
-from .ast_visualizer import render_ast
 
 
-def decode(file: str, debug: bool = False, generate_image: bool | None = None):
-    if generate_image is None:
-        generate_image = debug
-
+def decode(file: str, debug: bool = False):
     fileName = os.path.splitext(file)[0]
     scanner = Scanner(debug)
-    parser_obj = Parser(scanner, fileName, debug)
+    parser = Parser(scanner, fileName, debug)
 
-    yacc_parser = parser_obj.parser
+    parser = parser.parser
 
-    with open(f"{fileName}.bin") as input_file:
-        ast_root = yacc_parser.parse(input_file.read())
-
-    if generate_image and ast_root is not None:
-        render_ast(ast_root, f"{fileName}_ast")
+    with open(f"{fileName}.bin") as input:
+        parser.parse(input.read())
