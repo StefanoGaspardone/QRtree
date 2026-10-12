@@ -1,0 +1,52 @@
+input "Quale spia è accesa?"
+if "Spia di stato":
+    print "Stato operativo della colonnina"
+    input "Che colore?"
+    if "Verde fisso":
+        print "Ricarica in corso, tutto regolare" exit
+    else if "Verde lampeggiante":
+        input "A che intervallo lampeggia?"
+        if "Intervallo di 500 ms":
+            print "In attesa di autenticazione" exit
+        else if "Intervallo di 250 ms":
+            print "Ricarica in corso a potenza ridotta" exit
+    else if "Arancione lampeggiante":
+        print "Inizializzazione in corso" exit
+    else if "Spenta":
+        print "Colonnina in standby" exit
+
+else if "Spia di errore":
+    print "Stato di errore"
+    input "Che colore?"
+    if "Rossa fissa":
+        print "Errore critico, contattare assistenza" exit
+    if "Rossa lampeggiante":
+        print "Sovratemperatura del connettore" exit
+
+else if "Spia di rete":
+    print "Stato della connessione di rete"
+    input "Che colore?"
+    if "Accesa":
+        print "Colonnina connessa al server di gestione" exit
+    else if "Spenta":
+        print "Colonnina non raggiungibile dal server" exit
+
+else if "Spia connettore":
+    print "Stato del blocco connettore"
+    input "Che colore?"
+    if "Blu fissa":
+        print "Connettore bloccato e ricarica autorizzata" exit
+    else if "Blu lampeggiante":
+        print "Sblocco del connettore in corso" exit
+    else if "Spenta":
+        print "Nessun connettore inserito" exit
+
+else if "Spia potenza disponibile":
+    print "Stato della potenza disponibile in rete"
+    input "Che colore?"
+    if "Verde":
+        print "Piena potenza disponibile, 22 kW" exit
+    else if "Gialla":
+        print "Potenza limitata dal gestore, 11 kW" exit
+    else if "Rossa":
+        print "Potenza minima garantita, 3.7 kW" exit

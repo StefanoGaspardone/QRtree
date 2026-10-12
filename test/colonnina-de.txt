@@ -1,0 +1,48 @@
+input "Welche Kontrollleuchte leuchtet?"
+if "Statusanzeige":
+    print "Betriebszustand der Ladesäule"
+    input "Welche Farbe?"
+    if "Grün dauerhaft":
+        print "Ladevorgang läuft, alles normal" exit
+    else if "Grün blinkend":
+        input "In welchem Intervall blinkt sie?"
+        if "Intervall von 500 ms":
+            print "Warten auf Authentifizierung" exit
+        else if "Intervall von 250 ms":
+            print "Ladevorgang mit reduzierter Leistung" exit
+    else if "Orange blinkend":
+        print "Initialisierung läuft" exit
+    else if "Aus":
+        print "Ladesäule im Standby" exit
+else if "Fehleranzeige":
+    print "Fehlerzustand"
+    input "Welche Farbe?"
+    if "Rot dauerhaft":
+        print "Kritischer Fehler, bitte Kundendienst kontaktieren" exit
+    if "Rot blinkend":
+        print "Übertemperatur des Steckers" exit
+else if "Netzwerkanzeige":
+    print "Status der Netzwerkverbindung"
+    input "Welche Farbe?"
+    if "An":
+        print "Ladesäule mit Verwaltungsserver verbunden" exit
+    else if "Aus":
+        print "Ladesäule vom Server nicht erreichbar" exit
+else if "Steckeranzeige":
+    print "Status der Steckerverriegelung"
+    input "Welche Farbe?"
+    if "Blau dauerhaft":
+        print "Stecker verriegelt und Ladevorgang freigegeben" exit
+    else if "Blau blinkend":
+        print "Entriegelung des Steckers läuft" exit
+    else if "Aus":
+        print "Kein Stecker eingesteckt" exit
+else if "Anzeige verfügbare Leistung":
+    print "Status der im Netz verfügbaren Leistung"
+    input "Welche Farbe?"
+    if "Grün":
+        print "Volle Leistung verfügbar, 22 kW" exit
+    else if "Gelb":
+        print "Vom Netzbetreiber begrenzte Leistung, 11 kW" exit
+    else if "Rot":
+        print "Garantierte Mindestleistung, 3,7 kW" exit

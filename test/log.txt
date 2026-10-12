@@ -1,0 +1,835 @@
+QRtree encode sweep -- 20260928_140105
+======================================================================
+
+File                     Lingue    Max depth Esito     Bin (byte)  Png (byte)  Tempo (s) Ordine catena       Ausiliario  Frammenti   
+---------------------------------------------------------------------------------------------------------------------------------------
+wifi.txt                 en        0         OK        4930        7549        1.05      en                  14          28          
+wifi.txt                 en        1         OK        4915        7659        67.33     en                  14          28          
+wifi.txt                 it        0         OK        4938        7400        3.03      it                  15          25          
+wifi.txt                 it        1         OK        4884        7506        66.37     it                  15          27          
+wifi.txt                 en,it     0         OK        5166        8071        3.25      it>en               11          30          
+wifi.txt                 en,it     1         OK        5138        7898        108.15    it>en               11          30          
+wifi.txt                 xx        0         OK        4930        7549        1.06      en                  14          28          
+wifi.txt                 xx        1         OK        4915        7659        93.55     en                  14          28          
+switch.txt               en        0         OK        3721        6596        1.04      en                  5           24          
+switch.txt               en        1         OK        3689        6607        94.33     en                  5           25          
+switch.txt               it        0         OK        3766        6359        3.07      it                  6           23          
+switch.txt               it        1         OK        3721        6594        95.11     it                  6           25          
+switch.txt               en,it     0         OK        3837        6280        3.11      en>it               2           24          
+switch.txt               en,it     1         OK        3805        6467        47.55     en>it               2           25          
+switch.txt               xx        0         OK        3721        6596        0.35      en                  5           24          
+switch.txt               xx        1         OK        3689        6607        46.26     en                  5           25          
+defibrillator.txt        en        0         OK        3247        5955        0.31      en                  4           22          
+defibrillator.txt        en        1         OK        3156        5595        87.26     en                  4           22          
+defibrillator.txt        it        0         OK        3357        5835        2.36      it                  8           19          
+defibrillator.txt        it        1         OK        3267        5842        80.51     it                  8           23          
+defibrillator.txt        en,it     0         OK        3279        5973        2.39      en>it               2           22          
+defibrillator.txt        en,it     1         OK        3188        5705        80.18     en>it               2           22          
+defibrillator.txt        xx        0         OK        3247        5955        0.32      en                  4           22          
+defibrillator.txt        xx        1         OK        3156        5595        75.44     en                  4           22          
+mountain.txt             en        0         OK        1374        2652        0.26      en                  2           7           
+mountain.txt             en        1         OK        1368        2705        0.44      en                  2           8           
+mountain.txt             it        0         OK        1472        3166        2.29      it                  6           9           
+mountain.txt             it        1         OK        1472        3166        2.52      it                  6           9           
+mountain.txt             en,it     0         OK        1410        3130        2.31      en>it               2           7           
+mountain.txt             en,it     1         OK        1404        3234        2.52      en>it               2           8           
+mountain.txt             xx        0         OK        1374        2652        0.25      en                  2           7           
+mountain.txt             xx        1         OK        1368        2705        0.46      en                  2           8           
+colonnina.txt            en        0         OK        4635        7269        0.31      en                  9           29          
+colonnina.txt            en        1         OK        4581        7300        33.93     en                  9           32          
+colonnina.txt            it        0         OK        4525        7235        2.36      it                  6           27          
+colonnina.txt            it        1         OK        4461        7189        33.29     it                  6           31          
+colonnina.txt            en,it     0         OK        4560        7119        2.38      it>en               3           27          
+colonnina.txt            en,it     1         OK        4496        7430        35.55     it>en               3           31          
+colonnina.txt            xx        0         OK        4635        7269        0.32      en                  9           29          
+colonnina.txt            xx        1         OK        4581        7300        31.19     en                  9           32          
+colonnina-ch.txt         ch        0         OK        7330        10153       0.36      ch                  38          48          
+colonnina-ch.txt         ch        1         OK        7266        10409       58.94     ch                  38          48          
+colonnina-ch.txt         it        0         OK        7394        10379       2.38      it                  60          44          
+colonnina-ch.txt         it        1         OK        7323        10270       69.22     it                  60          44          
+colonnina-ch.txt         ch,it     0         OK        6815        10005       2.43      it>ch               3           47          
+colonnina-ch.txt         ch,it     1         OK        6738        10081       71.79     it>ch               3           47          
+colonnina-fr.txt         fr        0         OK        4668        7278        0.33      fr                  3           25          
+colonnina-fr.txt         fr        1         OK        4612        7358        37.77     fr                  3           29          
+colonnina-fr.txt         en        0         OK        4943        7720        0.32      en                  12          31          
+colonnina-fr.txt         en        1         OK        4903        7681        39.47     en                  12          32          
+colonnina-de.txt         de        0         OK        4788        7604        0.32      de                  4           30          
+colonnina-de.txt         de        1         OK        4755        7564        27.27     de                  4           30          
+colonnina-de.txt         en        0         OK        4989        8165        0.32      en                  10          30          
+colonnina-de.txt         en        1         OK        4947        7420        27.09     en                  10          29          
+
+
+======================================================================
+DETTAGLIO PER RUN
+======================================================================
+
+### wifi.txt | lingue = en | max_depth = 0 ###
+exit code: 0
+.bin size: 4930 byte
+.png size: 7549 byte
+ordine catena: en
+dizionario ausiliario: 14 elementi
+dizionario frammenti: 28 elementi
+tempo: 1.05s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### wifi.txt | lingue = en | max_depth = 1 ###
+exit code: 0
+.bin size: 4915 byte
+.png size: 7659 byte
+ordine catena: en
+dizionario ausiliario: 14 elementi
+dizionario frammenti: 28 elementi
+tempo: 67.33s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### wifi.txt | lingue = it | max_depth = 0 ###
+exit code: 0
+.bin size: 4938 byte
+.png size: 7400 byte
+ordine catena: it
+dizionario ausiliario: 15 elementi
+dizionario frammenti: 25 elementi
+tempo: 3.03s
+stdout:
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### wifi.txt | lingue = it | max_depth = 1 ###
+exit code: 0
+.bin size: 4884 byte
+.png size: 7506 byte
+ordine catena: it
+dizionario ausiliario: 15 elementi
+dizionario frammenti: 27 elementi
+tempo: 66.37s
+stdout:
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### wifi.txt | lingue = en,it | max_depth = 0 ###
+exit code: 0
+.bin size: 5166 byte
+.png size: 8071 byte
+ordine catena: it>en
+dizionario ausiliario: 11 elementi
+dizionario frammenti: 30 elementi
+tempo: 3.25s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 2 language dictionary(ies), chain order to be chosen by the search
+
+### wifi.txt | lingue = en,it | max_depth = 1 ###
+exit code: 0
+.bin size: 5138 byte
+.png size: 7898 byte
+ordine catena: it>en
+dizionario ausiliario: 11 elementi
+dizionario frammenti: 30 elementi
+tempo: 108.15s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 2 language dictionary(ies), chain order to be chosen by the search
+
+### wifi.txt | lingue = xx | max_depth = 0 ###
+exit code: 0
+.bin size: 4930 byte
+.png size: 7549 byte
+ordine catena: en
+dizionario ausiliario: 14 elementi
+dizionario frammenti: 28 elementi
+tempo: 1.06s
+stdout:
+note: language 'xx' not recognized (not present in LANGUAGE_IDS)
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: falling back to 'en' for 'xx'
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### wifi.txt | lingue = xx | max_depth = 1 ###
+exit code: 0
+.bin size: 4915 byte
+.png size: 7659 byte
+ordine catena: en
+dizionario ausiliario: 14 elementi
+dizionario frammenti: 28 elementi
+tempo: 93.55s
+stdout:
+note: language 'xx' not recognized (not present in LANGUAGE_IDS)
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: falling back to 'en' for 'xx'
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### switch.txt | lingue = en | max_depth = 0 ###
+exit code: 0
+.bin size: 3721 byte
+.png size: 6596 byte
+ordine catena: en
+dizionario ausiliario: 5 elementi
+dizionario frammenti: 24 elementi
+tempo: 1.04s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### switch.txt | lingue = en | max_depth = 1 ###
+exit code: 0
+.bin size: 3689 byte
+.png size: 6607 byte
+ordine catena: en
+dizionario ausiliario: 5 elementi
+dizionario frammenti: 25 elementi
+tempo: 94.33s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### switch.txt | lingue = it | max_depth = 0 ###
+exit code: 0
+.bin size: 3766 byte
+.png size: 6359 byte
+ordine catena: it
+dizionario ausiliario: 6 elementi
+dizionario frammenti: 23 elementi
+tempo: 3.07s
+stdout:
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### switch.txt | lingue = it | max_depth = 1 ###
+exit code: 0
+.bin size: 3721 byte
+.png size: 6594 byte
+ordine catena: it
+dizionario ausiliario: 6 elementi
+dizionario frammenti: 25 elementi
+tempo: 95.11s
+stdout:
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### switch.txt | lingue = en,it | max_depth = 0 ###
+exit code: 0
+.bin size: 3837 byte
+.png size: 6280 byte
+ordine catena: en>it
+dizionario ausiliario: 2 elementi
+dizionario frammenti: 24 elementi
+tempo: 3.11s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 2 language dictionary(ies), chain order to be chosen by the search
+
+### switch.txt | lingue = en,it | max_depth = 1 ###
+exit code: 0
+.bin size: 3805 byte
+.png size: 6467 byte
+ordine catena: en>it
+dizionario ausiliario: 2 elementi
+dizionario frammenti: 25 elementi
+tempo: 47.55s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 2 language dictionary(ies), chain order to be chosen by the search
+
+### switch.txt | lingue = xx | max_depth = 0 ###
+exit code: 0
+.bin size: 3721 byte
+.png size: 6596 byte
+ordine catena: en
+dizionario ausiliario: 5 elementi
+dizionario frammenti: 24 elementi
+tempo: 0.35s
+stdout:
+note: language 'xx' not recognized (not present in LANGUAGE_IDS)
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: falling back to 'en' for 'xx'
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### switch.txt | lingue = xx | max_depth = 1 ###
+exit code: 0
+.bin size: 3689 byte
+.png size: 6607 byte
+ordine catena: en
+dizionario ausiliario: 5 elementi
+dizionario frammenti: 25 elementi
+tempo: 46.26s
+stdout:
+note: language 'xx' not recognized (not present in LANGUAGE_IDS)
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: falling back to 'en' for 'xx'
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### defibrillator.txt | lingue = en | max_depth = 0 ###
+exit code: 0
+.bin size: 3247 byte
+.png size: 5955 byte
+ordine catena: en
+dizionario ausiliario: 4 elementi
+dizionario frammenti: 22 elementi
+tempo: 0.31s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### defibrillator.txt | lingue = en | max_depth = 1 ###
+exit code: 0
+.bin size: 3156 byte
+.png size: 5595 byte
+ordine catena: en
+dizionario ausiliario: 4 elementi
+dizionario frammenti: 22 elementi
+tempo: 87.26s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### defibrillator.txt | lingue = it | max_depth = 0 ###
+exit code: 0
+.bin size: 3357 byte
+.png size: 5835 byte
+ordine catena: it
+dizionario ausiliario: 8 elementi
+dizionario frammenti: 19 elementi
+tempo: 2.36s
+stdout:
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### defibrillator.txt | lingue = it | max_depth = 1 ###
+exit code: 0
+.bin size: 3267 byte
+.png size: 5842 byte
+ordine catena: it
+dizionario ausiliario: 8 elementi
+dizionario frammenti: 23 elementi
+tempo: 80.51s
+stdout:
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### defibrillator.txt | lingue = en,it | max_depth = 0 ###
+exit code: 0
+.bin size: 3279 byte
+.png size: 5973 byte
+ordine catena: en>it
+dizionario ausiliario: 2 elementi
+dizionario frammenti: 22 elementi
+tempo: 2.39s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 2 language dictionary(ies), chain order to be chosen by the search
+
+### defibrillator.txt | lingue = en,it | max_depth = 1 ###
+exit code: 0
+.bin size: 3188 byte
+.png size: 5705 byte
+ordine catena: en>it
+dizionario ausiliario: 2 elementi
+dizionario frammenti: 22 elementi
+tempo: 80.18s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 2 language dictionary(ies), chain order to be chosen by the search
+
+### defibrillator.txt | lingue = xx | max_depth = 0 ###
+exit code: 0
+.bin size: 3247 byte
+.png size: 5955 byte
+ordine catena: en
+dizionario ausiliario: 4 elementi
+dizionario frammenti: 22 elementi
+tempo: 0.32s
+stdout:
+note: language 'xx' not recognized (not present in LANGUAGE_IDS)
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: falling back to 'en' for 'xx'
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### defibrillator.txt | lingue = xx | max_depth = 1 ###
+exit code: 0
+.bin size: 3156 byte
+.png size: 5595 byte
+ordine catena: en
+dizionario ausiliario: 4 elementi
+dizionario frammenti: 22 elementi
+tempo: 75.44s
+stdout:
+note: language 'xx' not recognized (not present in LANGUAGE_IDS)
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: falling back to 'en' for 'xx'
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### mountain.txt | lingue = en | max_depth = 0 ###
+exit code: 0
+.bin size: 1374 byte
+.png size: 2652 byte
+ordine catena: en
+dizionario ausiliario: 2 elementi
+dizionario frammenti: 7 elementi
+tempo: 0.26s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### mountain.txt | lingue = en | max_depth = 1 ###
+exit code: 0
+.bin size: 1368 byte
+.png size: 2705 byte
+ordine catena: en
+dizionario ausiliario: 2 elementi
+dizionario frammenti: 8 elementi
+tempo: 0.44s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### mountain.txt | lingue = it | max_depth = 0 ###
+exit code: 0
+.bin size: 1472 byte
+.png size: 3166 byte
+ordine catena: it
+dizionario ausiliario: 6 elementi
+dizionario frammenti: 9 elementi
+tempo: 2.29s
+stdout:
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### mountain.txt | lingue = it | max_depth = 1 ###
+exit code: 0
+.bin size: 1472 byte
+.png size: 3166 byte
+ordine catena: it
+dizionario ausiliario: 6 elementi
+dizionario frammenti: 9 elementi
+tempo: 2.52s
+stdout:
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### mountain.txt | lingue = en,it | max_depth = 0 ###
+exit code: 0
+.bin size: 1410 byte
+.png size: 3130 byte
+ordine catena: en>it
+dizionario ausiliario: 2 elementi
+dizionario frammenti: 7 elementi
+tempo: 2.31s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 2 language dictionary(ies), chain order to be chosen by the search
+
+### mountain.txt | lingue = en,it | max_depth = 1 ###
+exit code: 0
+.bin size: 1404 byte
+.png size: 3234 byte
+ordine catena: en>it
+dizionario ausiliario: 2 elementi
+dizionario frammenti: 8 elementi
+tempo: 2.52s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 2 language dictionary(ies), chain order to be chosen by the search
+
+### mountain.txt | lingue = xx | max_depth = 0 ###
+exit code: 0
+.bin size: 1374 byte
+.png size: 2652 byte
+ordine catena: en
+dizionario ausiliario: 2 elementi
+dizionario frammenti: 7 elementi
+tempo: 0.25s
+stdout:
+note: language 'xx' not recognized (not present in LANGUAGE_IDS)
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: falling back to 'en' for 'xx'
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### mountain.txt | lingue = xx | max_depth = 1 ###
+exit code: 0
+.bin size: 1368 byte
+.png size: 2705 byte
+ordine catena: en
+dizionario ausiliario: 2 elementi
+dizionario frammenti: 8 elementi
+tempo: 0.46s
+stdout:
+note: language 'xx' not recognized (not present in LANGUAGE_IDS)
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: falling back to 'en' for 'xx'
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina.txt | lingue = en | max_depth = 0 ###
+exit code: 0
+.bin size: 4635 byte
+.png size: 7269 byte
+ordine catena: en
+dizionario ausiliario: 9 elementi
+dizionario frammenti: 29 elementi
+tempo: 0.31s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina.txt | lingue = en | max_depth = 1 ###
+exit code: 0
+.bin size: 4581 byte
+.png size: 7300 byte
+ordine catena: en
+dizionario ausiliario: 9 elementi
+dizionario frammenti: 32 elementi
+tempo: 33.93s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina.txt | lingue = it | max_depth = 0 ###
+exit code: 0
+.bin size: 4525 byte
+.png size: 7235 byte
+ordine catena: it
+dizionario ausiliario: 6 elementi
+dizionario frammenti: 27 elementi
+tempo: 2.36s
+stdout:
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina.txt | lingue = it | max_depth = 1 ###
+exit code: 0
+.bin size: 4461 byte
+.png size: 7189 byte
+ordine catena: it
+dizionario ausiliario: 6 elementi
+dizionario frammenti: 31 elementi
+tempo: 33.29s
+stdout:
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina.txt | lingue = en,it | max_depth = 0 ###
+exit code: 0
+.bin size: 4560 byte
+.png size: 7119 byte
+ordine catena: it>en
+dizionario ausiliario: 3 elementi
+dizionario frammenti: 27 elementi
+tempo: 2.38s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 2 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina.txt | lingue = en,it | max_depth = 1 ###
+exit code: 0
+.bin size: 4496 byte
+.png size: 7430 byte
+ordine catena: it>en
+dizionario ausiliario: 3 elementi
+dizionario frammenti: 31 elementi
+tempo: 35.55s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 2 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina.txt | lingue = xx | max_depth = 0 ###
+exit code: 0
+.bin size: 4635 byte
+.png size: 7269 byte
+ordine catena: en
+dizionario ausiliario: 9 elementi
+dizionario frammenti: 29 elementi
+tempo: 0.32s
+stdout:
+note: language 'xx' not recognized (not present in LANGUAGE_IDS)
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: falling back to 'en' for 'xx'
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina.txt | lingue = xx | max_depth = 1 ###
+exit code: 0
+.bin size: 4581 byte
+.png size: 7300 byte
+ordine catena: en
+dizionario ausiliario: 9 elementi
+dizionario frammenti: 32 elementi
+tempo: 31.19s
+stdout:
+note: language 'xx' not recognized (not present in LANGUAGE_IDS)
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: falling back to 'en' for 'xx'
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina-ch.txt | lingue = ch | max_depth = 0 ###
+exit code: 0
+.bin size: 7330 byte
+.png size: 10153 byte
+ordine catena: ch
+dizionario ausiliario: 38 elementi
+dizionario frammenti: 48 elementi
+tempo: 0.36s
+stdout:
+note: using local cached dictionary for 'ch' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\ch.bin)
+note: resolved 'ch' (lang_id=2, fingerprint=0xbe76)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina-ch.txt | lingue = ch | max_depth = 1 ###
+exit code: 0
+.bin size: 7266 byte
+.png size: 10409 byte
+ordine catena: ch
+dizionario ausiliario: 38 elementi
+dizionario frammenti: 48 elementi
+tempo: 58.94s
+stdout:
+note: using local cached dictionary for 'ch' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\ch.bin)
+note: resolved 'ch' (lang_id=2, fingerprint=0xbe76)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina-ch.txt | lingue = it | max_depth = 0 ###
+exit code: 0
+.bin size: 7394 byte
+.png size: 10379 byte
+ordine catena: it
+dizionario ausiliario: 60 elementi
+dizionario frammenti: 44 elementi
+tempo: 2.38s
+stdout:
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina-ch.txt | lingue = it | max_depth = 1 ###
+exit code: 0
+.bin size: 7323 byte
+.png size: 10270 byte
+ordine catena: it
+dizionario ausiliario: 60 elementi
+dizionario frammenti: 44 elementi
+tempo: 69.22s
+stdout:
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina-ch.txt | lingue = ch,it | max_depth = 0 ###
+exit code: 0
+.bin size: 6815 byte
+.png size: 10005 byte
+ordine catena: it>ch
+dizionario ausiliario: 3 elementi
+dizionario frammenti: 47 elementi
+tempo: 2.43s
+stdout:
+note: using local cached dictionary for 'ch' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\ch.bin)
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'ch' (lang_id=2, fingerprint=0xbe76)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 2 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina-ch.txt | lingue = ch,it | max_depth = 1 ###
+exit code: 0
+.bin size: 6738 byte
+.png size: 10081 byte
+ordine catena: it>ch
+dizionario ausiliario: 3 elementi
+dizionario frammenti: 47 elementi
+tempo: 71.79s
+stdout:
+note: using local cached dictionary for 'ch' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\ch.bin)
+note: fetch failed for 'it' from http://127.0.0.1:8899/it.bin: <urlopen error [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione>
+note: using local cached dictionary for 'it' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\it.bin)
+note: resolved 'ch' (lang_id=2, fingerprint=0xbe76)
+note: resolved 'it' (lang_id=1, fingerprint=0x1b98)
+note: compressing with 2 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina-fr.txt | lingue = fr | max_depth = 0 ###
+exit code: 0
+.bin size: 4668 byte
+.png size: 7278 byte
+ordine catena: fr
+dizionario ausiliario: 3 elementi
+dizionario frammenti: 25 elementi
+tempo: 0.33s
+stdout:
+note: using local cached dictionary for 'fr' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\fr.bin)
+note: resolved 'fr' (lang_id=3, fingerprint=0x6615)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina-fr.txt | lingue = fr | max_depth = 1 ###
+exit code: 0
+.bin size: 4612 byte
+.png size: 7358 byte
+ordine catena: fr
+dizionario ausiliario: 3 elementi
+dizionario frammenti: 29 elementi
+tempo: 37.77s
+stdout:
+note: using local cached dictionary for 'fr' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\fr.bin)
+note: resolved 'fr' (lang_id=3, fingerprint=0x6615)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina-fr.txt | lingue = en | max_depth = 0 ###
+exit code: 0
+.bin size: 4943 byte
+.png size: 7720 byte
+ordine catena: en
+dizionario ausiliario: 12 elementi
+dizionario frammenti: 31 elementi
+tempo: 0.32s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina-fr.txt | lingue = en | max_depth = 1 ###
+exit code: 0
+.bin size: 4903 byte
+.png size: 7681 byte
+ordine catena: en
+dizionario ausiliario: 12 elementi
+dizionario frammenti: 32 elementi
+tempo: 39.47s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina-de.txt | lingue = de | max_depth = 0 ###
+exit code: 0
+.bin size: 4788 byte
+.png size: 7604 byte
+ordine catena: de
+dizionario ausiliario: 4 elementi
+dizionario frammenti: 30 elementi
+tempo: 0.32s
+stdout:
+note: using local cached dictionary for 'de' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\de.bin)
+note: resolved 'de' (lang_id=4, fingerprint=0x205a)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina-de.txt | lingue = de | max_depth = 1 ###
+exit code: 0
+.bin size: 4755 byte
+.png size: 7564 byte
+ordine catena: de
+dizionario ausiliario: 4 elementi
+dizionario frammenti: 30 elementi
+tempo: 27.27s
+stdout:
+note: using local cached dictionary for 'de' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\de.bin)
+note: resolved 'de' (lang_id=4, fingerprint=0x205a)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina-de.txt | lingue = en | max_depth = 0 ###
+exit code: 0
+.bin size: 4989 byte
+.png size: 8165 byte
+ordine catena: en
+dizionario ausiliario: 10 elementi
+dizionario frammenti: 30 elementi
+tempo: 0.32s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+
+### colonnina-de.txt | lingue = en | max_depth = 1 ###
+exit code: 0
+.bin size: 4947 byte
+.png size: 7420 byte
+ordine catena: en
+dizionario ausiliario: 10 elementi
+dizionario frammenti: 29 elementi
+tempo: 27.09s
+stdout:
+note: using local cached dictionary for 'en' (C:\Users\stivi\Documents\Projects\QRtree\dictionaries\en.bin)
+note: resolved 'en' (lang_id=0, fingerprint=0x638b)
+note: compressing with 1 language dictionary(ies), chain order to be chosen by the search
+

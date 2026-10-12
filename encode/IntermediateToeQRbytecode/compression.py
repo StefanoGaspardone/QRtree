@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # String compression
 #
-# Build the shared library with the Makefile in this folder: `make`
+# Build the shared library with the Makefile in this folder: "make"
 # (libc2.so on Linux, libc2.dylib on macOS, libc2.dll on Windows with MinGW-w64)
 
 import ctypes

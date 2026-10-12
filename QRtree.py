@@ -41,7 +41,7 @@ def main_encode(args):
 
 def main_decode(args):
     eQRcodeToeQRbytecode.decode(args.input)
-    eQRbytecodeToIntermediate.decode(args.input, debug=args.debug)
+    eQRbytecodeToIntermediate.decode(args.input, debug=args.debug, generate_image=args.debug)
     
     if args.output is None:
         args.output = f"{os.path.splitext(args.input)[0]}.html"
