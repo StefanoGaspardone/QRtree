@@ -80,6 +80,31 @@ def read_bits(bin_path):
         return f.read().strip()
 
 
+QR_BOX_SIZE = 10
+QR_BORDER = 4
+
+
+def png_qr_version(png_path):
+    """Versione QR ricavata dalla larghezza in pixel del PNG generato (box_size 10, bordo 4): w = (17 + 4 * versione + 2 * bordo) * box_size.
+    Serve a verificare che il calcolo fatto qui coincida con quello del QR code realmente generato."""
+    if not os.path.exists(png_path):
+        return None
+
+    with open(png_path, 'rb') as f:
+        header = f.read(24)
+
+    if len(header) < 24 or header[:8] != b'\x89PNG\r\n\x1a\n':
+        return None
+
+    width = int.from_bytes(header[16:20], 'big')
+    modules = width // QR_BOX_SIZE - 2 * QR_BORDER
+
+    if width % QR_BOX_SIZE != 0 or (modules - 17) % 4 != 0:
+        return None
+
+    return (modules - 17) // 4
+
+
 def qr_payload_bits(data_bits):
     """Bit effettivi scritti nel QR code: intestazione QRscript + dati + padding.
     Il padding (zeri seguiti da un 1) porta il totale a un multiplo di 8, come in encode()."""
@@ -177,6 +202,7 @@ def run_one(input_file, languages, max_depth):
 
     png_path = basename_abs + '.png'
     png_size = os.path.getsize(png_path) if os.path.exists(png_path) else None
+    png_version = png_qr_version(png_path)
 
     cleanup_stale(basename_abs)
 
@@ -189,6 +215,8 @@ def run_one(input_file, languages, max_depth):
         'qr_bits': qr_bits,
         'qr_bytes': qr_bytes,
         'qr_version': qr_version,
+        'png_version': png_version,
+        'version_ok': (png_version == qr_version) if png_version is not None and qr_version is not None else None,
         'png_size_bytes': png_size,
         'chain_order': header_info.get('chain_order'),
         'aux_count': header_info.get('aux_count'),
@@ -219,6 +247,7 @@ def main():
                 qr_bits = result['qr_bits']
                 qr_version = result['qr_version']
                 png_size = result['png_size_bytes']
+                check = {True: 'OK', False: 'DIVERSA (PNG v' + str(result['png_version']) + ')', None: 'N/D'}[result['version_ok']]
                 bin_str = f'{bin_bits} bit' if bin_bits is not None else 'N/D'
                 qr_str = f'{qr_bits} bit (v{qr_version})' if qr_bits is not None else 'N/D'
                 png_str = f'{png_size} byte' if png_size is not None else 'N/D'
@@ -227,30 +256,31 @@ def main():
                 aux_count = result['aux_count']
                 frag_count = result['fragments_count']
 
-                print(f'  {status} | .bin = {bin_str} | QR = {qr_str} | .png = {png_str} | catena = {chain_order} | ausiliario = {aux_count} | frammenti = {frag_count} | {elapsed_s}s')
+                print(f'  {status} | .bin = {bin_str} | QR = {qr_str} | verifica versione = {check} | .png = {png_str} | catena = {chain_order} | ausiliario = {aux_count} | frammenti = {frag_count} | {elapsed_s}s')
 
     with open(LOG_PATH, 'w', encoding = 'utf-8') as f:
         f.write(f'QRtree encode sweep -- {timestamp}\n')
         f.write('=' * 70 + '\n\n')
 
-        header = '{:<25}{:<10}{:<10}{:<10}{:<12}{:<12}{:<10}{:<12}{:<10}{:<20}{:<12}{:<12}'.format(
-            'File', 'Lingue', 'Max depth', 'Esito', 'Bin (bit)', 'QR (bit)', 'Versione', 'Png (byte)', 'Tempo (s)', 'Ordine catena', 'Ausiliario', 'Frammenti'
+        header = '{:<25}{:<10}{:<10}{:<10}{:<12}{:<12}{:<10}{:<10}{:<12}{:<10}{:<20}{:<12}{:<12}'.format(
+            'File', 'Lingue', 'Max depth', 'Esito', 'Bin (bit)', 'QR (bit)', 'Versione', 'Verifica', 'Png (byte)', 'Tempo (s)', 'Ordine catena', 'Ausiliario', 'Frammenti'
         )
         f.write(header + '\n')
-        f.write('-' * 155 + '\n')
+        f.write('-' * 165 + '\n')
 
         for r in results:
             esito = 'OK' if r['returncode'] == 0 else 'ERRORE'
             bin_str = str(r['bin_bits']) if r['bin_bits'] is not None else 'N/D'
             qr_str = str(r['qr_bits']) if r['qr_bits'] is not None else 'N/D'
             ver_str = str(r['qr_version']) if r['qr_version'] is not None else 'N/D'
+            chk_str = {True: 'OK', False: 'DIVERSA', None: 'N/D'}[r['version_ok']]
             png_str = str(r['png_size_bytes']) if r['png_size_bytes'] is not None else 'N/D'
             chain_order = r['chain_order'] or 'N/D'
             aux_str = str(r['aux_count']) if r['aux_count'] is not None else '-'
             frag_str = str(r['fragments_count']) if r['fragments_count'] is not None else 'N/D'
 
-            row = '{:<25}{:<10}{:<10}{:<10}{:<12}{:<12}{:<10}{:<12}{:<10}{:<20}{:<12}{:<12}'.format(
-                r['input_file'], r['languages'], r['max_depth'], esito, bin_str, qr_str, ver_str, png_str, r['elapsed_s'], chain_order, aux_str, frag_str
+            row = '{:<25}{:<10}{:<10}{:<10}{:<12}{:<12}{:<10}{:<10}{:<12}{:<10}{:<20}{:<12}{:<12}'.format(
+                r['input_file'], r['languages'], r['max_depth'], esito, bin_str, qr_str, ver_str, chk_str, png_str, r['elapsed_s'], chain_order, aux_str, frag_str
             )
             f.write(row + '\n')
 
@@ -266,7 +296,7 @@ def main():
             f.write(f'### {input_file} | lingue = {languages} | max_depth = {max_depth} ###\n')
             f.write(f'exit code: {r["returncode"]}\n')
             f.write(f'.bin: {r["bin_bits"]} bit\n')
-            f.write(f'QR code: {r["qr_bits"]} bit (versione {r["qr_version"]}), con intestazione QRscript e padding\n')
+            f.write(f'QR code: {r["qr_bits"]} bit (versione {r["qr_version"]}, versione del PNG {r["png_version"]}), con intestazione QRscript e padding\n')
             f.write(f'.png size: {r["png_size_bytes"]} byte\n')
             f.write(f'ordine catena: {r["chain_order"]}\n')
 
