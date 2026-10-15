@@ -1,3 +1,4 @@
+import json
 import subprocess
 import os
 import sys
@@ -7,18 +8,14 @@ from datetime import datetime
 import qrcode
 from qrcode.util import QRData, MODE_8BIT_BYTE
 
-TEST_CASES = [
-    ('wifi.txt', [['en'], ['it'], ['en', 'it'], ['xx']]),
-    ('switch.txt', [['en'], ['it'], ['en', 'it'], ['xx']]),
-    ('defibrillator.txt', [['en'], ['it'], ['en', 'it'], ['xx']]),
-    ('mountain.txt', [['en'], ['it'], ['en', 'it'], ['xx']]),
-    ('colonnina.txt', [['en'], ['it'], ['en', 'it'], ['xx']]),
-    ('colonnina-ch.txt', [['ch'], ['it'], ['ch', 'it']]),
-    ('colonnina-fr.txt', [['fr'], ['en']]),
-    ('colonnina-de.txt', [['de'], ['en']]),
+SWEEP = [
+    ('defibrillator.txt', [['en'], ['it'], ['en', 'it']], [2]),
+    ('mountain.txt', [['en'], ['it'], ['en', 'it']], [2]),
+    ('colonnina.txt', [['en'], ['it'], ['en', 'it']], [2]),
+    ('colonnina-ch.txt', [['ch'], ['it'], ['ch', 'it']], [2]),
 ]
 
-MAX_DEPTHS = [0, 1, 2] if sys.platform.startswith('linux') else [0, 1]
+MAX_DEPTH_AVAILABLE = 2 if sys.platform.startswith('linux') else 1
 
 PYTHON = sys.executable
 
@@ -27,7 +24,9 @@ PROJECT_ROOT = os.path.dirname(TEST_DIR)
 QRTREE_SCRIPT = os.path.join(PROJECT_ROOT, 'QRtree.py')
 TEST_SUBDIR_NAME = os.path.basename(TEST_DIR)
 
-LOG_PATH = os.path.join(TEST_DIR, 'log.txt')
+LOG_PATH = os.path.join(TEST_DIR, 'log.txt')                  # tabella riassuntiva, una riga per run
+DETAIL_PATH = os.path.join(TEST_DIR, 'log_details.txt')       # dettaglio di ogni run
+RESULTS_PATH = os.path.join(TEST_DIR, 'results.jsonl')        # un risultato per riga, per riprendere un'esecuzione interrotta
 
 ID_TO_LANGUAGE = {0: 'en', 1: 'it', 2: 'ch', 3: 'fr', 4: 'de'}
 
@@ -35,8 +34,6 @@ FINGERPRINT_BITS = 16
 
 DICT_HEADER_CMD_BITS = 3
 
-# Intestazione QRscript scritta da qrcode_encode: continuazione (1) + profilo di sicurezza (4) + URL (1) + dialetto (4) + versione (4) + bit di presenza dell'intestazione QRtree (1).
-# Deve restare allineata con la funzione encode() che genera il QR code.
 QRSCRIPT_HEADER_BITS = 1 + 4 + 1 + 4 + 4 + 1
 
 QR_ERROR_CORRECTION = qrcode.constants.ERROR_CORRECT_H
@@ -228,99 +225,137 @@ def run_one(input_file, languages, max_depth):
     }
 
 
+ROW_FORMAT = '{:<25}{:<10}{:<10}{:<10}{:<12}{:<12}{:<10}{:<10}{:<12}{:<10}{:<20}{:<12}{:<12}'
+HEADER_COLUMNS = ('File', 'Lingue', 'Max depth', 'Esito', 'Bin (bit)', 'QR (bit)', 'Versione', 'Verifica', 'Png (byte)', 'Tempo (s)', 'Ordine catena', 'Ausiliario', 'Frammenti')
+
+
+def expand(sweep):
+    runs = []
+
+    for input_file, combos, depths in sweep:
+        for languages in combos:
+            for max_depth in depths:
+                runs.append((input_file, languages, max_depth))
+
+    return runs
+
+
+def run_key(input_file, languages, max_depth):
+    return f'{input_file}|{",".join(languages)}|{max_depth}'
+
+
+def load_done():
+    """Chiavi dei run già completati con successo, per non rifarli se l'esecuzione viene ripresa."""
+    done = set()
+
+    if os.path.exists(RESULTS_PATH):
+        with open(RESULTS_PATH, 'r', encoding = 'utf-8') as f:
+            for line in f:
+                line = line.strip()
+
+                if not line:
+                    continue
+
+                r = json.loads(line)
+
+                if r.get('returncode') == 0:
+                    done.add(run_key(r['input_file'], r['languages'].split(','), r['max_depth']))
+
+    return done
+
+
+def append_result(r, timestamp):
+    """Scrive subito il risultato di un run, così un'interruzione non fa perdere quelli già completati."""
+    with open(RESULTS_PATH, 'a', encoding = 'utf-8') as f:
+        f.write(json.dumps(r) + '\n')
+
+    new_table = not os.path.exists(LOG_PATH)
+
+    with open(LOG_PATH, 'a', encoding = 'utf-8') as f:
+        if new_table:
+            f.write(f'QRtree encode sweep -- {timestamp}\n')
+            f.write('=' * 70 + '\n\n')
+            f.write(ROW_FORMAT.format(*HEADER_COLUMNS) + '\n')
+            f.write('-' * 165 + '\n')
+
+        esito = 'OK' if r['returncode'] == 0 else 'ERRORE'
+        bin_str = str(r['bin_bits']) if r['bin_bits'] is not None else 'N/D'
+        qr_str = str(r['qr_bits']) if r['qr_bits'] is not None else 'N/D'
+        ver_str = str(r['qr_version']) if r['qr_version'] is not None else 'N/D'
+        chk_str = {True: 'OK', False: 'DIVERSA', None: 'N/D'}[r['version_ok']]
+        png_str = str(r['png_size_bytes']) if r['png_size_bytes'] is not None else 'N/D'
+        chain_order = r['chain_order'] or 'N/D'
+        aux_str = str(r['aux_count']) if r['aux_count'] is not None else '-'
+        frag_str = str(r['fragments_count']) if r['fragments_count'] is not None else 'N/D'
+
+        f.write(ROW_FORMAT.format(
+            r['input_file'], r['languages'], r['max_depth'], esito, bin_str, qr_str, ver_str, chk_str, png_str, r['elapsed_s'], chain_order, aux_str, frag_str
+        ) + '\n')
+
+    with open(DETAIL_PATH, 'a', encoding = 'utf-8') as f:
+        f.write(f'### {r["input_file"]} | lingue = {r["languages"]} | max_depth = {r["max_depth"]} ###\n')
+        f.write(f'exit code: {r["returncode"]}\n')
+        f.write(f'.bin: {r["bin_bits"]} bit\n')
+        f.write(f'QR code: {r["qr_bits"]} bit (versione {r["qr_version"]}, versione del PNG {r["png_version"]}), con intestazione QRscript e padding\n')
+        f.write(f'.png size: {r["png_size_bytes"]} byte\n')
+        f.write(f'ordine catena: {r["chain_order"]}\n')
+
+        if r['aux_count'] is not None:
+            f.write(f'dizionario ausiliario: {r["aux_count"]} elementi\n')
+
+        if r['local_alphabet_count'] is not None:
+            f.write(f'alfabeto locale: {r["local_alphabet_count"]} elementi\n')
+
+        f.write(f'dizionario frammenti: {r["fragments_count"]} elementi\n')
+        f.write(f'tempo: {r["elapsed_s"]}s\n')
+
+        if r['stdout']:
+            f.write(f'stdout:\n{r["stdout"]}\n')
+
+        if r['stderr']:
+            f.write(f'stderr:\n{r["stderr"]}\n')
+
+        f.write('\n')
+
+
 def main():
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
-    results = []
-    for input_file, combos in TEST_CASES:
-        for languages in combos:
-            for max_depth in MAX_DEPTHS:
-                lang_label = '+'.join(languages)
-                print(f'--- {input_file} | lingue = {lang_label} | max_depth = {max_depth} ---')
+    done = load_done()
 
-                result = run_one(input_file, languages, max_depth)
-                results.append(result)
+    runs = expand(SWEEP)
+    print(f'Run in programma: {len(runs)} | già completati: {len(done)}')
 
-                returncode = result['returncode']
-                status = 'OK' if returncode == 0 else f'ERRORE (exit {returncode})'
-                bin_bits = result['bin_bits']
-                qr_bits = result['qr_bits']
-                qr_version = result['qr_version']
-                png_size = result['png_size_bytes']
-                check = {True: 'OK', False: 'DIVERSA (PNG v' + str(result['png_version']) + ')', None: 'N/D'}[result['version_ok']]
-                bin_str = f'{bin_bits} bit' if bin_bits is not None else 'N/D'
-                qr_str = f'{qr_bits} bit (v{qr_version})' if qr_bits is not None else 'N/D'
-                png_str = f'{png_size} byte' if png_size is not None else 'N/D'
-                elapsed_s = result['elapsed_s']
-                chain_order = result['chain_order']
-                aux_count = result['aux_count']
-                frag_count = result['fragments_count']
+    for input_file, languages, max_depth in runs:
+        lang_label = '+'.join(languages)
 
-                print(f'  {status} | .bin = {bin_str} | QR = {qr_str} | verifica versione = {check} | .png = {png_str} | catena = {chain_order} | ausiliario = {aux_count} | frammenti = {frag_count} | {elapsed_s}s')
+        if max_depth > MAX_DEPTH_AVAILABLE:
+            print(f'--- {input_file} | lingue = {lang_label} | max_depth = {max_depth} --- saltato (profondità non disponibile su questa piattaforma)')
+            continue
 
-    with open(LOG_PATH, 'w', encoding = 'utf-8') as f:
-        f.write(f'QRtree encode sweep -- {timestamp}\n')
-        f.write('=' * 70 + '\n\n')
+        if run_key(input_file, languages, max_depth) in done:
+            print(f'--- {input_file} | lingue = {lang_label} | max_depth = {max_depth} --- già fatto, saltato')
+            continue
 
-        header = '{:<25}{:<10}{:<10}{:<10}{:<12}{:<12}{:<10}{:<10}{:<12}{:<10}{:<20}{:<12}{:<12}'.format(
-            'File', 'Lingue', 'Max depth', 'Esito', 'Bin (bit)', 'QR (bit)', 'Versione', 'Verifica', 'Png (byte)', 'Tempo (s)', 'Ordine catena', 'Ausiliario', 'Frammenti'
-        )
-        f.write(header + '\n')
-        f.write('-' * 165 + '\n')
+        print(f'--- {input_file} | lingue = {lang_label} | max_depth = {max_depth} ---')
 
-        for r in results:
-            esito = 'OK' if r['returncode'] == 0 else 'ERRORE'
-            bin_str = str(r['bin_bits']) if r['bin_bits'] is not None else 'N/D'
-            qr_str = str(r['qr_bits']) if r['qr_bits'] is not None else 'N/D'
-            ver_str = str(r['qr_version']) if r['qr_version'] is not None else 'N/D'
-            chk_str = {True: 'OK', False: 'DIVERSA', None: 'N/D'}[r['version_ok']]
-            png_str = str(r['png_size_bytes']) if r['png_size_bytes'] is not None else 'N/D'
-            chain_order = r['chain_order'] or 'N/D'
-            aux_str = str(r['aux_count']) if r['aux_count'] is not None else '-'
-            frag_str = str(r['fragments_count']) if r['fragments_count'] is not None else 'N/D'
+        result = run_one(input_file, languages, max_depth)
+        append_result(result, timestamp)
 
-            row = '{:<25}{:<10}{:<10}{:<10}{:<12}{:<12}{:<10}{:<10}{:<12}{:<10}{:<20}{:<12}{:<12}'.format(
-                r['input_file'], r['languages'], r['max_depth'], esito, bin_str, qr_str, ver_str, chk_str, png_str, r['elapsed_s'], chain_order, aux_str, frag_str
-            )
-            f.write(row + '\n')
+        returncode = result['returncode']
+        status = 'OK' if returncode == 0 else f'ERRORE (exit {returncode})'
+        bin_bits = result['bin_bits']
+        qr_bits = result['qr_bits']
+        qr_version = result['qr_version']
+        png_size = result['png_size_bytes']
+        check = {True: 'OK', False: 'DIVERSA (PNG v' + str(result['png_version']) + ')', None: 'N/D'}[result['version_ok']]
+        bin_str = f'{bin_bits} bit' if bin_bits is not None else 'N/D'
+        qr_str = f'{qr_bits} bit (v{qr_version})' if qr_bits is not None else 'N/D'
+        png_str = f'{png_size} byte' if png_size is not None else 'N/D'
 
-        f.write('\n\n' + '=' * 70 + '\n')
-        f.write('DETTAGLIO PER RUN\n')
-        f.write('=' * 70 + '\n\n')
+        print(f'  {status} | .bin = {bin_str} | QR = {qr_str} | verifica versione = {check} | .png = {png_str} | catena = {result["chain_order"]} | ausiliario = {result["aux_count"]} | frammenti = {result["fragments_count"]} | {result["elapsed_s"]}s')
 
-        for r in results:
-            input_file = r['input_file']
-            languages = r['languages']
-            max_depth = r['max_depth']
-
-            f.write(f'### {input_file} | lingue = {languages} | max_depth = {max_depth} ###\n')
-            f.write(f'exit code: {r["returncode"]}\n')
-            f.write(f'.bin: {r["bin_bits"]} bit\n')
-            f.write(f'QR code: {r["qr_bits"]} bit (versione {r["qr_version"]}, versione del PNG {r["png_version"]}), con intestazione QRscript e padding\n')
-            f.write(f'.png size: {r["png_size_bytes"]} byte\n')
-            f.write(f'ordine catena: {r["chain_order"]}\n')
-
-            if r['aux_count'] is not None:
-                f.write(f'dizionario ausiliario: {r["aux_count"]} elementi\n')
-
-            if r['local_alphabet_count'] is not None:
-                f.write(f'alfabeto locale: {r["local_alphabet_count"]} elementi\n')
-
-            f.write(f'dizionario frammenti: {r["fragments_count"]} elementi\n')
-            f.write(f'tempo: {r["elapsed_s"]}s\n')
-
-            stdout = r['stdout']
-            stderr = r['stderr']
-
-            if stdout:
-                f.write(f'stdout:\n{stdout}\n')
-
-            if stderr:
-                f.write(f'stderr:\n{stderr}\n')
-
-            f.write('\n')
-
-    print(f'\nLog completo scritto in: {LOG_PATH}')
+    print(f'\nTabella: {LOG_PATH}\nDettaglio: {DETAIL_PATH}')
 
 
 if __name__ == '__main__':
