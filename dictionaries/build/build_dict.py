@@ -84,9 +84,6 @@ def huffman_len_lengths(freqs: dict, count: int) -> dict:
     return new_lengths
 
 
-ESCAPE_FREQ_METHOD = "witten-bell"
-
-
 def build_dict_bits(corpus_bytes: bytes) -> tuple:
     freq_by_byte = {}
     for b in corpus_bytes:
@@ -118,8 +115,8 @@ def build_language_dict(lang_code: str):
     corpus_path = os.path.join(CORPUS_DIR, f"{lang_code}.txt")
 
     if not os.path.exists(corpus_path):
-        print(f"ERRORE: corpus non trovato per la lingua '{lang_code}': {corpus_path}")
-        print("Metti un file di testo rappresentativo in quel percorso e riprova.")
+        print(f"ERROR: corpus not found for languages '{lang_code}': {corpus_path}")
+        print("Place a representative text file in that path and try again.")
         sys.exit(1)
 
     with open(corpus_path, "r", encoding="utf-8") as f:
@@ -127,7 +124,7 @@ def build_language_dict(lang_code: str):
 
     corpus_bytes = corpus.encode("utf-8")
 
-    dict_bits, escape_length = build_dict_bits(corpus_bytes)
+    dict_bits, _escape_length = build_dict_bits(corpus_bytes)
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     output_path = os.path.join(OUTPUT_DIR, f"{lang_code}.bin")
@@ -136,14 +133,13 @@ def build_language_dict(lang_code: str):
         f.write(dict_bits)
 
     corpus_chars = set(corpus_bytes)
-    print(f"lingua={lang_code}: corpus={len(corpus_bytes)} byte UTF-8 ({len(corpus_chars)} valori distinti)")
-    print(f"simbolo escape (id={len(corpus_chars)}): lunghezza codice = {escape_length} bit (metodo: {ESCAPE_FREQ_METHOD})")
-    print(f"scritto {output_path}: {len(dict_bits)} bit ({len(dict_bits) // 8 + 1} byte)")
+    print(f"lingua = {lang_code}: corpus = {len(corpus_bytes)} byte UTF-8 ({len(corpus_chars)} different values)")
+    print(f"scritto {output_path}: {len(dict_bits)} bits")
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Costruisce il dizionario-alfabeto ottimizzato per una lingua, script autonomo")
-    ap.add_argument("lang", help="codice lingua (es. 'en'), deve avere un corpus in corpus/<lang>.txt")
+    ap = argparse.ArgumentParser(description="Builds an optimized dictionary-alphabet for a language; a standalone script.")
+    ap.add_argument("lang", help="language code (e.g. 'en'), must have a corpus in corpus/<lang>.txt")
 
     args = ap.parse_args()
     build_language_dict(args.lang)
