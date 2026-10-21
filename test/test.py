@@ -9,11 +9,12 @@ import qrcode
 from qrcode.util import QRData, MODE_8BIT_BYTE
 
 SWEEP = [
-    ('wifi.txt', [['en']], [2]),
-    ('switch.txt', [['en']], [2]),
-    ('defibrillator.txt', [['en']], [2]),
-    ('mountain.txt', [['en']], [2]),
-    ('colonnina.txt', [['en']], [2]),
+    ('wifi.txt',          [['it'], ['en', 'it']], [2]),
+    ('switch.txt',        [['it'], ['en', 'it']], [2]),
+    ('defibrillator.txt', [['it'], ['en', 'it']], [2]),
+    ('mountain.txt',      [['it'], ['en', 'it']], [2]),
+    ('colonnina.txt',     [['it'], ['en', 'it']], [2]),
+    ('colonnina-ch.txt',  [['it'], ['ch', 'it']], [2]),
 ]
 
 MAX_DEPTH_AVAILABLE = 2 if sys.platform.startswith('linux') else 1
