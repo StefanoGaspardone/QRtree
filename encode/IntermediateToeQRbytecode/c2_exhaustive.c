@@ -1099,6 +1099,290 @@ static void greedy_build(const StrItem *strs, const int nstrs, const int *char_b
     *out_seqs = best_seqs;
 }
 
+/* ============================================================
+ * DFS Branch & Bound
+ * ============================================================ */
+#define MEMO_MAX_ENTRIES 5000000LL
+#define MEMO_INITIAL_CAP (1u << 16)
+#define REMAINING_UNLIMITED INT32_MAX
+
+typedef struct {
+    uint64_t h1, h2;
+    int32_t remaining;
+    int32_t used;
+} MemoEntry;
+
+typedef struct {
+    MemoEntry *entries;
+    size_t cap;
+    int64_t n;
+    int64_t max_entries;
+} MemoTable;
+
+static void memo_init(MemoTable *m, const int64_t max_entries) {
+    m->cap = MEMO_INITIAL_CAP;
+    m->entries = (MemoEntry *)calloc(m->cap, sizeof(MemoEntry));
+    m->n = 0;
+    m->max_entries = max_entries;
+}
+
+static void memo_free(MemoTable *m) {
+    free(m->entries);
+    m->entries = NULL;
+    m->cap = 0;
+    m->n = 0;
+}
+
+static size_t memo_slot(const MemoTable *m, const uint64_t h1, const uint64_t h2) {
+    size_t idx = (size_t)(h1 & (m->cap - 1));
+
+    while(m->entries[idx].used && !(m->entries[idx].h1 == h1 && m->entries[idx].h2 == h2)) {
+        idx = (idx + 1) & (m->cap - 1);
+    }
+
+    return idx;
+}
+
+static void memo_grow(MemoTable *m) {
+    MemoTable bigger;
+    bigger.cap = m->cap * 2;
+    bigger.entries = (MemoEntry *)calloc(bigger.cap, sizeof(MemoEntry));
+    bigger.n = m->n;
+    bigger.max_entries = m->max_entries;
+
+    for(size_t i = 0; i < m->cap; i++) {
+        if(!m->entries[i].used) continue;
+
+        const size_t idx = memo_slot(&bigger, m->entries[i].h1, m->entries[i].h2);
+        bigger.entries[idx] = m->entries[i];
+    }
+
+    free(m->entries);
+    *m = bigger;
+}
+
+/* Restituisce la profondita' residua registrata per lo stato, oppure -1 se non presente */
+static int32_t memo_get(const MemoTable *m, const uint64_t h1, const uint64_t h2) {
+    const size_t idx = memo_slot(m, h1, h2);
+
+    return m->entries[idx].used ? m->entries[idx].remaining : -1;
+}
+
+/* Registra (o aggiorna) lo stato; uno stato nuovo viene inserito solo se c'e' ancora posto */
+static void memo_put(MemoTable *m, const uint64_t h1, const uint64_t h2, const int32_t remaining) {
+    size_t idx = memo_slot(m, h1, h2);
+
+    if(m->entries[idx].used) {
+        m->entries[idx].remaining = remaining;
+        return;
+    }
+
+    if(m->n >= m->max_entries) return;
+
+    if((size_t)(m->n + 1) * 2 > m->cap) {
+        memo_grow(m);
+        idx = memo_slot(m, h1, h2);
+    }
+
+    m->entries[idx].h1 = h1;
+    m->entries[idx].h2 = h2;
+    m->entries[idx].remaining = remaining;
+    m->entries[idx].used = 1;
+    m->n++;
+}
+
+typedef struct { uint64_t a, b; } Hash128;
+
+static void hash128_update(Hash128 *h, const uint8_t *data, const size_t len) {
+    for(size_t i = 0; i < len; i++) {
+        h->a ^= data[i];
+        h->a *= 1099511628211ULL;
+
+        h->b ^= (uint64_t)data[i] + 0x9e3779b97f4a7c15ULL;
+        h->b *= 0x100000001b3ULL;
+        h->b ^= h->b >> 29;
+    }
+}
+
+static uint64_t mix64(uint64_t x) {
+    x ^= x >> 30;
+    x *= 0xbf58476d1ce4e5b9ULL;
+    x ^= x >> 27;
+    x *= 0x94d049bb133111ebULL;
+    x ^= x >> 31;
+
+    return x;
+}
+
+static void state_key(const Dictionary *dct, const SeqList *sqs, uint64_t *out_h1, uint64_t *out_h2) {
+    Hash128 h = { 1469598103934665603ULL, 0x84222325cbf29ce4ULL };
+    static const uint8_t sep[2] = { 0xff, 0xfe };
+
+    for(int i = 0; i < sqs->n; i++) {
+        const Seq *seq = &sqs->seqs[i];
+        hash128_update(&h, sep, 2);
+
+        for(int k = 0; k < seq->len; k++) {
+            if(seq->items[k].type == RAW) {
+                const uint8_t rec[2] = { 0, (uint8_t)seq->items[k].val };
+                hash128_update(&h, rec, 2);
+            } else {
+                const DictEntry *e = &dct->entries[seq->items[k].val];
+                const uint8_t rec[2] = { 1, (uint8_t)e->len };
+
+                hash128_update(&h, rec, 2);
+                hash128_update(&h, e->data, (size_t)e->len);
+            }
+        }
+    }
+
+    *out_h1 = mix64(h.a);
+    *out_h2 = mix64(h.b ^ h.a);
+}
+
+static int candmap_find(const CandMap *m, const uint8_t *key, const int keylen) {
+    if(m->n == 0) return -1;
+
+    const uint64_t h = fnv1a(key, keylen);
+    size_t idx = h % m->tcap;
+
+    for(;;) {
+        const int slot = m->table[idx];
+
+        if(slot == 0) return -1;
+
+        const CandEntry *e = &m->entries[slot - 1];
+        if(e->keylen == keylen && memcmp(e->key, key, keylen) == 0) return slot - 1;
+
+        idx = (idx + 1) % m->tcap;
+    }
+}
+
+static double lower_bound_bits(const Dictionary *dct, const SeqList *sqs, const CandMap *candidates, const int *char_bit_len_by_byte, const int encoding, const int max_len) {
+    const int D = dct->n;
+    double lb = (double)ref_enc_size_bits((int64_t)D);
+
+    for(int i = 0; i < D; i++) {
+        int64_t bits = ref_enc_size_bits((int64_t)dct->entries[i].len);
+        for(int k = 0; k < dct->entries[i].len; k++) bits += char_bit_len_by_byte[dct->entries[i].data[k]];
+
+        lb += (double)bits;
+    }
+
+    int tok_table_bits = 0;
+
+    if(encoding == ENC_HUFF_LEN) {
+        lb += (double)codec_overhead_bits(encoding, D);
+        tok_table_bits = 4;
+    } else if(encoding == ENC_HUFF_FREQ) {
+        lb += (double)codec_overhead_bits(encoding, D);
+        tok_table_bits = 8;
+    }
+
+    lb += (double)(4 * (int64_t)sqs->n);
+
+    int64_t *tok_freqs = count_tok_freqs(sqs, D);
+    int64_t n_tok = 0;
+    for(int i = 0; i < D; i++) n_tok += tok_freqs[i];
+
+    if(n_tok > 0) {
+        if(encoding == ENC_FIXED) {
+            lb += (double)(n_tok * (1 + needed_bits(D)));
+        } else if(encoding == ENC_POSITIONAL) {
+            int *tok_bits = codec_token_lengths(encoding, tok_freqs, D);
+            int64_t s = 0;
+            for(int i = 0; i < D; i++) if(tok_freqs[i] > 0) s += tok_freqs[i] * (1 + tok_bits[i]);
+
+            free(tok_bits);
+            lb += (double)s;
+        } else if(encoding == ENC_HUFF_LEN) {
+            int *lengths = huffman_lengths(tok_freqs, D);
+            int64_t s = n_tok;
+            for(int i = 0; i < D; i++) s += tok_freqs[i] * lengths[i];
+
+            free(lengths);
+            lb += (double)s;
+        } else {
+            lb += (double)(2 * n_tok);
+        }
+    }
+
+    free(tok_freqs);
+
+    const int t_new = encoding == ENC_FIXED ? needed_bits(D + 1) : 1;
+    double *per_char = (double *)malloc(sizeof(double) * (candidates->n > 0 ? candidates->n : 1));
+
+    for(int c = 0; c < candidates->n; c++) {
+        const CandEntry *e = &candidates->entries[c];
+        const int64_t occ = e->count;
+
+        if(occ < 2) {
+            per_char[c] = INFINITY;
+            continue;
+        }
+
+        const int L = e->keylen;
+        int64_t pat_bits = 0;
+        for(int k = 0; k < L; k++) pat_bits += char_bit_len_by_byte[e->key[k]];
+
+        const int64_t num = (1 + t_new) * occ + ref_enc_size_bits((int64_t)L) + pat_bits + tok_table_bits;
+        per_char[c] = (double)num / (double)(occ * L);
+    }
+
+    int rowcap = 64;
+    double *row = (double *)malloc(sizeof(double) * rowcap);
+    uint8_t *acc = (uint8_t *)malloc((size_t)(max_len > 0 ? max_len : 1));
+
+    for(int si = 0; si < sqs->n; si++) {
+        const Seq *seq = &sqs->seqs[si];
+        const int n = seq->len;
+
+        if(n > rowcap) {
+            while(n > rowcap) rowcap *= 2;
+            row = (double *)realloc(row, sizeof(double) * rowcap);
+        }
+
+        for(int k = 0; k < n; k++) {
+            row[k] = seq->items[k].type == RAW ? (double)(1 + char_bit_len_by_byte[(uint8_t)seq->items[k].val]) : 0.0;
+        }
+
+        if(candidates->n > 0) {
+            for(int i = 0; i < n; i++) {
+                if(seq->items[i].type != RAW) continue;
+
+                int acclen = 0;
+                const int jmax = n < i + max_len ? n : i + max_len;
+
+                for(int j = i; j < jmax; j++) {
+                    if(seq->items[j].type != RAW) break;
+
+                    acc[acclen++] = (uint8_t)seq->items[j].val;
+
+                    const int c = candmap_find(candidates, acc, acclen);
+                    if(c < 0) continue;
+
+                    const double cost = per_char[c];
+                    for(int k = i; k <= j; k++) if(cost < row[k]) row[k] = cost;
+                }
+            }
+        }
+
+        double rowsum = 0.0;
+        for(int k = 0; k < n; k++) if(seq->items[k].type == RAW) rowsum += row[k];
+
+        lb += rowsum;
+    }
+
+    free(acc);
+    free(row);
+    free(per_char);
+
+    return lb;
+}
+
+/* ------------------------------------------------------------
+ * DFS
+ * ------------------------------------------------------------ */
 typedef struct {
     const StrItem *strs;
     int nstrs;
@@ -1107,25 +1391,23 @@ typedef struct {
     int min_len, max_len, max_dict;
     int max_depth;
     int max_depth_is_none;
-    int64_t nodes, pruned_bb;
+
+    int64_t global_best_bits;
+    MemoTable memo;
+
+    int64_t nodes, pruned_bb, pruned_memo;
 } DfsCtx;
 
 typedef struct { int64_t bits; Dictionary dict; SeqList seqs; } DfsResult;
 
-static double compute_ub_gain(const DfsCtx *ctx, const CandMap *candidates, const SeqList *sqs) {
-    if(candidates->n == 0) return 0.0;
+static DfsResult dfs_pruned_result(void) {
+    DfsResult r;
 
-    CandScore *scores = calloc(candidates->n, sizeof(CandScore));
-    score_candidates(candidates, sqs, NULL, 0, ctx->encoding, ctx->char_bit_len_by_byte, 1, scores);
+    r.bits = INT64_MAX;
+    r.dict.entries = NULL; r.dict.n = 0; r.dict.cap = 0;
+    r.seqs.seqs = NULL; r.seqs.n = 0;
 
-    double total = 0.0;
-    for(int i = 0; i < candidates->n; i++) {
-        if(!scores[i].valid) continue;
-        if(scores[i].gain > 0) total += (double)scores[i].gain;
-    }
-
-    free(scores);
-    return total;
+    return r;
 }
 
 typedef struct { int64_t gain; int cand_idx; } ScoredItem;
@@ -1137,8 +1419,34 @@ static int scoreditem_cmp_desc(const void *a, const void *b) {
     return x->cand_idx - y->cand_idx;
 }
 
-static DfsResult dfs_run(DfsCtx *ctx, const Dictionary *dct, const SeqList *sqs, const int64_t current_bits, const int depth) {
+static DfsResult dfs_run(DfsCtx *ctx, const Dictionary *dct, const SeqList *sqs, const int depth) {
     ctx->nodes++;
+    const int32_t remaining = ctx->max_depth_is_none ? REMAINING_UNLIMITED : (int32_t)(ctx->max_depth - depth);
+
+    uint64_t h1, h2;
+    state_key(dct, sqs, &h1, &h2);
+
+    const int32_t seen = memo_get(&ctx->memo, h1, h2);
+    if(seen >= 0 && seen >= remaining) {
+        ctx->pruned_memo++;
+        return dfs_pruned_result();
+    }
+
+    memo_put(&ctx->memo, h1, h2, remaining);
+
+    CandMap candidates;
+    if(dct->n < ctx->max_dict) candidates = find_candidates(sqs, ctx->min_len, ctx->max_len);
+    else candmap_init(&candidates, 64);
+
+    if(ctx->global_best_bits < INT64_MAX) {
+        const double lb = lower_bound_bits(dct, sqs, &candidates, ctx->char_bit_len_by_byte, ctx->encoding, ctx->max_len);
+
+        if(ceil(lb - 1e-9) >= (double)ctx->global_best_bits) {
+            ctx->pruned_bb++;
+            candmap_free(&candidates);
+            return dfs_pruned_result();
+        }
+    }
 
     Dictionary base_dct; SeqList base_sqs;
     greedy_build(ctx->strs, ctx->nstrs, ctx->char_bit_len_by_byte, ctx->encoding, ctx->min_len, ctx->max_len, ctx->max_dict, dct, sqs, &base_dct, &base_sqs);
@@ -1149,25 +1457,9 @@ static DfsResult dfs_run(DfsCtx *ctx, const Dictionary *dct, const SeqList *sqs,
     best_local.dict = base_dct;
     best_local.seqs = base_sqs;
 
-    if(dct->n >= ctx->max_dict) {
-        return best_local;
-    }
+    if(base_bits < ctx->global_best_bits) ctx->global_best_bits = base_bits;
 
-    if(!ctx->max_depth_is_none && depth >= ctx->max_depth) {
-        return best_local;
-    }
-
-    CandMap candidates = find_candidates(sqs, ctx->min_len, ctx->max_len);
-
-    if(candidates.n == 0) {
-        candmap_free(&candidates);
-        return best_local;
-    }
-
-    const double ub_gain_bits = compute_ub_gain(ctx, &candidates, sqs);
-
-    if((double)current_bits - ub_gain_bits >= (double)base_bits) {
-        ctx->pruned_bb++;
+    if(dct->n >= ctx->max_dict || (!ctx->max_depth_is_none && depth >= ctx->max_depth) || candidates.n == 0) {
         candmap_free(&candidates);
         return best_local;
     }
@@ -1210,9 +1502,7 @@ static DfsResult dfs_run(DfsCtx *ctx, const Dictionary *dct, const SeqList *sqs,
         dict_push(&new_dct, pat, patlen);
         SeqList new_sqs = replace_non_overlapping(sqs, pat, patlen, D);
 
-        const int64_t new_bits = score_dictionary_bits(&new_dct, &new_sqs, ctx->char_bit_len_by_byte, ctx->encoding);
-
-        DfsResult cand_result = dfs_run(ctx, &new_dct, &new_sqs, new_bits, depth + 1);
+        DfsResult cand_result = dfs_run(ctx, &new_dct, &new_sqs, depth + 1);
 
         dict_free(&new_dct);
         seqlist_free(&new_sqs);
@@ -1248,15 +1538,18 @@ static void exhaustive_build(const StrItem *strs, const int nstrs, const int *ch
     ctx.encoding = encoding;
     ctx.min_len = min_len; ctx.max_len = max_len; ctx.max_dict = max_dict;
     ctx.max_depth = max_depth; ctx.max_depth_is_none = max_depth_is_none;
-    ctx.nodes = ctx.pruned_bb = 0;
+    ctx.global_best_bits = INT64_MAX;
+    memo_init(&ctx.memo, MEMO_MAX_ENTRIES);
+    ctx.nodes = ctx.pruned_bb = ctx.pruned_memo = 0;
 
     Dictionary empty_dict; dict_init(&empty_dict, 4);
-    const int64_t init_bits = score_dictionary_bits(&empty_dict, &init_seqs, char_bit_len_by_byte, encoding);
 
-    const DfsResult result = dfs_run(&ctx, &empty_dict, &init_seqs, init_bits, 0);
+    const DfsResult result = dfs_run(&ctx, &empty_dict, &init_seqs, 0);
 
     dict_free(&empty_dict);
     seqlist_free(&init_seqs);
+
+    memo_free(&ctx.memo);
 
     *out_dict = result.dict;
     *out_seqs = result.seqs;
