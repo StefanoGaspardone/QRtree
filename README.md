@@ -47,8 +47,8 @@ Other optional arguments are:
 
 - **-d**, **--debug**, if it is present the compiler prints debug information
 - **-o OUTPUT**, **--output OUTPUT**, the optional output file name, if missing the input file name is used
-- **-l LANGUAGES**, **--languages LANGUAGES**, *(encode only)* comma-separated list of the language dictionaries to use for the compression, in priority order (e.g. `en` or `it,en`). Default: `en`
-- **-m MAX_DEPTH**, **--max-depth MAX_DEPTH**, *(encode only)* depth of the DFS branch-and-bound search used by the compression: `0` is the greedy search only (fastest), `N` is a search of depth `N`. Higher values can produce smaller codes at the cost of a longer compilation time. Default: `1`
+- **-l LANGUAGES**, **--languages LANGUAGES**, *(encode only)* comma-separated list of the language dictionaries to use for the compression, in any order (e.g. `en` or `it,en`). Default: `en`
+- **-m MAX_DEPTH**, **--max-depth MAX_DEPTH**, *(encode only)* depth of the search used by the compression: `0` is the greedy search only (fastest), `N` is a search of depth `N`. Higher values can produce smaller codes at the cost of a longer compilation time. Default: `1`
 - **--no-cleanup**, if present the temporary files created during the compilation are kept
 - **-h**, **--help**, prints help informations
 
@@ -144,7 +144,7 @@ The current version has the following limitations:
 - References are encoded with an extensible format limited to the following cases 4 bits, 8 bits, 16 bits and 32 bits
 - Jumps are encoded with an extensible format limited to the following cases 4 bits, 8 bits, 16 bits and 32 bits
 - QRscipt header is not implemented
-- When the ``--no-cleanup`` option is used, the generated file with extension .bin containing the QRbytecode binary representation of the code does not have either the QRscript or the QRtree headers. Both headers are encoded in the generated eQR code, and in particular, the following sequence of bits are included: the needed padding to have the QRbytecode multiple of 8 bits, 0 for the continuation, 0000 for security, 0 for URL, 0000 for dialect, 0001 for version, 1 to indicate the presence of the QRtree header (which contains the DICT command).
+- When the ``--no-cleanup`` option is used, the generated file with extension .bin containing the QRbytecode binary representation of the code does not have the QRscript header (the QRtree header is written in the .bin file instead). The header is encoded in the generated eQR code, and in particular, the following sequence of bits are included: the needed padding to have the QRbytecode multiple of 8 bits, 0 for the continuation, 0000 for security, 0 for URL, 0000 for dialect, 0001 for version, 1 to indicate the presence of the QRtree header (which contains the DICT command).
 
 # References
 
