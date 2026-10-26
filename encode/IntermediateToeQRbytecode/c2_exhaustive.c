@@ -1104,12 +1104,9 @@ static void greedy_build(const StrItem *strs, const int nstrs, const int *char_b
  * ============================================================ */
 #define MEMO_MAX_ENTRIES 5000000LL
 #define MEMO_INITIAL_CAP (1u << 16)
-#define REMAINING_UNLIMITED INT32_MAX
 
 typedef struct {
     uint64_t h1, h2;
-    int32_t remaining;
-    int32_t used;
 } MemoEntry;
 
 typedef struct {
@@ -1136,7 +1133,7 @@ static void memo_free(MemoTable *m) {
 static size_t memo_slot(const MemoTable *m, const uint64_t h1, const uint64_t h2) {
     size_t idx = (size_t)(h1 & (m->cap - 1));
 
-    while(m->entries[idx].used && !(m->entries[idx].h1 == h1 && m->entries[idx].h2 == h2)) {
+    while(m->entries[idx].h2 != 0 && !(m->entries[idx].h1 == h1 && m->entries[idx].h2 == h2)) {
         idx = (idx + 1) & (m->cap - 1);
     }
 
@@ -1151,7 +1148,7 @@ static void memo_grow(MemoTable *m) {
     bigger.max_entries = m->max_entries;
 
     for(size_t i = 0; i < m->cap; i++) {
-        if(!m->entries[i].used) continue;
+        if(m->entries[i].h2 == 0) continue;
 
         const size_t idx = memo_slot(&bigger, m->entries[i].h1, m->entries[i].h2);
         bigger.entries[idx] = m->entries[i];
@@ -1161,33 +1158,19 @@ static void memo_grow(MemoTable *m) {
     *m = bigger;
 }
 
-/* Restituisce la profondita' residua registrata per lo stato, oppure -1 se non presente */
-static int32_t memo_get(const MemoTable *m, const uint64_t h1, const uint64_t h2) {
-    const size_t idx = memo_slot(m, h1, h2);
-
-    return m->entries[idx].used ? m->entries[idx].remaining : -1;
+static int memo_contains(const MemoTable *m, const uint64_t h1, const uint64_t h2) {
+    return m->entries[memo_slot(m, h1, h2)].h2 != 0;
 }
 
-/* Registra (o aggiorna) lo stato; uno stato nuovo viene inserito solo se c'e' ancora posto */
-static void memo_put(MemoTable *m, const uint64_t h1, const uint64_t h2, const int32_t remaining) {
-    size_t idx = memo_slot(m, h1, h2);
-
-    if(m->entries[idx].used) {
-        m->entries[idx].remaining = remaining;
-        return;
-    }
-
+static void memo_add(MemoTable *m, const uint64_t h1, const uint64_t h2) {
     if(m->n >= m->max_entries) return;
 
-    if((size_t)(m->n + 1) * 2 > m->cap) {
-        memo_grow(m);
-        idx = memo_slot(m, h1, h2);
-    }
+    if((size_t)(m->n + 1) * 2 > m->cap) memo_grow(m);
+
+    const size_t idx = memo_slot(m, h1, h2);
 
     m->entries[idx].h1 = h1;
     m->entries[idx].h2 = h2;
-    m->entries[idx].remaining = remaining;
-    m->entries[idx].used = 1;
     m->n++;
 }
 
@@ -1237,7 +1220,7 @@ static void state_key(const Dictionary *dct, const SeqList *sqs, uint64_t *out_h
     }
 
     *out_h1 = mix64(h.a);
-    *out_h2 = mix64(h.b ^ h.a);
+    *out_h2 = mix64(h.b ^ h.a) | 1ULL; /* mai 0: 0 indica una voce vuota della tabella */
 }
 
 static int candmap_find(const CandMap *m, const uint8_t *key, const int keylen) {
@@ -1421,18 +1404,16 @@ static int scoreditem_cmp_desc(const void *a, const void *b) {
 
 static DfsResult dfs_run(DfsCtx *ctx, const Dictionary *dct, const SeqList *sqs, const int depth) {
     ctx->nodes++;
-    const int32_t remaining = ctx->max_depth_is_none ? REMAINING_UNLIMITED : (int32_t)(ctx->max_depth - depth);
 
     uint64_t h1, h2;
     state_key(dct, sqs, &h1, &h2);
 
-    const int32_t seen = memo_get(&ctx->memo, h1, h2);
-    if(seen >= 0 && seen >= remaining) {
+    if(memo_contains(&ctx->memo, h1, h2)) {
         ctx->pruned_memo++;
         return dfs_pruned_result();
     }
 
-    memo_put(&ctx->memo, h1, h2, remaining);
+    memo_add(&ctx->memo, h1, h2);
 
     CandMap candidates;
     if(dct->n < ctx->max_dict) candidates = find_candidates(sqs, ctx->min_len, ctx->max_len);
