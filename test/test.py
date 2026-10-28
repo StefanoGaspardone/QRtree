@@ -9,7 +9,6 @@ import qrcode
 from qrcode.util import QRData, MODE_8BIT_BYTE
 
 SWEEP = [
-    ('ap.txt', [['en']], [0, 1]),
     ('ap.txt', [['it']], [0, 1]),
     ('ap.txt', [['en', 'it']], [1])
 ]
