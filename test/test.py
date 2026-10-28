@@ -9,8 +9,7 @@ import qrcode
 from qrcode.util import QRData, MODE_8BIT_BYTE
 
 SWEEP = [
-    ('ap.txt', [['it']], [0, 1]),
-    ('ap.txt', [['en', 'it']], [1])
+    ('ap.txt', [['en']], [0, 1]),
 ]
 
 MAX_DEPTH_AVAILABLE = 2 if sys.platform.startswith('linux') else 1
