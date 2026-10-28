@@ -1,0 +1,65 @@
+input "Which area of the release notes?"
+if "Wireless":
+    input "Which settings?"
+    if "Networks":
+        print "Added note about Open Mesh configuration, see “Wireless Networks — Open Mesh Settings” on page 82"
+        print "Minimum Signal Allowed setting for each SSID, see “Wireless Networks — General Settings” on page 73"
+        print "Added Device OS Blacklist, see “Wireless Networks — General Settings” on page 73"
+        print "Added RADIUS NAS ID, see “Wireless Networks — Security Settings” on page 75"
+        print "Multiple PSK enhancement, see “Wireless Networks — Security Settings” on page 75"
+        print "Access Control List enhancement, see “Wireless Networks — Security Settings” on page 75"
+        print "Modified Dynamic VLAN, see “Wireless Networks — Network Settings” on page 80"
+        print "Modified HotSpot 2.0 settings, see “Wireless Networks — Network Settings” on page 80"
+        exit
+    else if "Radio":
+        print "Added Radio Resource Management, see “Radio Resource Management” on page 84"
+        print "Modified Minimum Signal Allowed default, see “Physical Radio Settings” on page 69"
+        print "Added SSID isolation, see “Physical Radio Settings” on page 69"
+        print "Modified broadcast rate, see “Physical Radio Settings” on page 69"
+        print "Modified Minimum Signal Allowed, see “Physical Radio Settings” on page 69"
+        print "Added RF Isolation, see “Physical Radio Settings” on page 69"
+        exit
+    else if "OpenRoaming":
+        print "Support for WPA3 Enterprise in OpenRoaming, see “Wireless Networks — OpenRoaming” on page 82"
+        print "Added OpenRoaming captive portal, see “OpenRoaming” on page 59"
+        print "Added OpenRoaming NAI Realm List Method/Authentication, see “OpenRoaming” on page 59"
+        print "Added OpenRoaming, see “OpenRoaming” on page 59 and “Wireless Networks — OpenRoaming” on page 82"
+        exit
+else if "Network":
+    print "Added RSTP support, see “LAN Settings” on page 50"
+    print "Added support for WireGuard VPN, see “VPN Settings” on page 65"
+    print "Added DS-Lite as an IP address mode, see “Internet Settings” on page 43"
+    print "Added 3G/LTE to Internet settings, see “Internet Settings” on page 43"
+    print "Removed Mark and Notrack from firewall rules, see “Firewall Rules” on page 52"
+    exit
+else if "System":
+    input "Which settings?"
+    if "Settings":
+        print "Added Syslog Level, see “System Settings” on page 88"
+        print "Hostname enhancement, see “System Settings” on page 88"
+        print "Moved the language setting to the System page, see “System Settings” on page 88"
+        print "Added Log Level, see “System Settings” on page 88"
+        exit
+    else if "Administration":
+        print "Firmware upgrade enhancement, see “Upgrading Firmware” on page 93"
+        print "Account username enhancement, see “User Accounts” on page 94"
+        print "Added SNMPv3 User, see “SNMP” on page 100"
+        print "Modified Diagnostics and added Speed Test, see “Diagnostics” on page 105"
+        exit
+else if "Devices":
+    print "Added support for EAP112"
+    print "Added HaLow and LTE support for EAP112"
+    print "Added support for EAP111"
+    print "Added support for OAP101"
+    exit
+else if "Setup":
+    print "Added WAN port auto-detection to QR code Onboarding, see “QR Code Onboarding” on page 27"
+    print "Added automatic mesh AP configuration, see “Mesh AP Configuration” on page 30"
+    print "Updated QR code Onboarding, see “QR Code Onboarding” on page 27"
+    print "Updated wireless status, see “Wireless Status” on page 38"
+    exit
+else if "BLE":
+    print "Modified BLE settings, see “BLE” on page 102"
+    print "Added MQTT settings page, see “MQTT” on page 104"
+    print "Added MQTT to BLE settings, see “BLE” on page 102"
+    exit
